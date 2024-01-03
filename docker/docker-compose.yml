@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  huggingface-jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8888:8888" # Port forwarding for Jupyter Notebook
+    environment:
+      - HOST_IP=${HOST_IP}
+    restart: always
+    volumes:
+      - /home/alan/workspace:/workspace
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+    stdin_open: true
+    tty: true
