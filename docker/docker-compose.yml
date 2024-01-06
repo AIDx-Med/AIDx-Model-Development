@@ -1,11 +1,17 @@
 version: '3.8'
 
 services:
-  delta-ai:
+  lambda-stack:
     build:
       context: https://github.com/lambdal/lambda-stack-dockerfiles.git
       dockerfile: Dockerfile.jammy
     image: lambda-stack:22.04
+  aidx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - lambda-stack
     ports:
       - "8888:8888" # Port forwarding for Jupyter Notebook
     environment:
