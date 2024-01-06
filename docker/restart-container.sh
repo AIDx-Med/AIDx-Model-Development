@@ -1,3 +1,3 @@
-docker stop environment-huggingface-jupyter-1
-docker rm environment-huggingface-jupyter-1
+docker stop docker-delta-ai-1
+docker rm docker-delta-ai-1
 ./start-container.sh
