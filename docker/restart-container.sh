@@ -1,3 +1,3 @@
-docker stop docker-aidx-1
-docker rm docker-aidx-1
+docker stop docker-aidx-jupyter-1
+docker rm docker-aidx-jupyter-1
 ./start-container.sh
