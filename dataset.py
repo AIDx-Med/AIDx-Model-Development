@@ -987,7 +987,7 @@ def upload_to_db(df):
 def process_hadm_id(hadm_id):
     try:
         df = patient_info_to_sample(hadm_id)
-        # upload_to_db(df)
+        upload_to_db(df)
     except Exception as e:
         print(f"Error processing hadm_id {hadm_id}: {e}")
     return hadm_id
