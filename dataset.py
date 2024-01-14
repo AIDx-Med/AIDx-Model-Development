@@ -13,7 +13,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 import argparse
 
-log_file_path = "processed_hadm_ids.log"
 log_file_lock = Lock()
 print_lock = Lock()
 
@@ -997,25 +996,25 @@ def fetch_all_hadm_ids():
 def upload_to_db(df):
     df.to_sql('data', mimicllm_engine, schema='mimicllm', if_exists='append', index=False, method='multi')
 
-def read_processed_hadm_ids(rewrite=False):
+def read_processed_hadm_ids(log_file_path, rewrite=False):
     if not os.path.exists(log_file_path) or rewrite:
         with open(log_file_path, 'w') as file:
             file.write("")
 
         return set()
     with open(log_file_path, 'r') as file:
-        return set(file.read().splitlines())
+        return {int(line.strip()) for line in file if line.strip().isdigit()}
 
-def log_hadm_id(hadm_id):
+def log_hadm_id(hadm_id, log_file_path):
     with log_file_lock:
         with open(log_file_path, 'a') as file:
             file.write(f"{hadm_id}\n")
 
-def process_hadm_id(hadm_id, pbar):
+def process_hadm_id(hadm_id, pbar, log_file_path):
     try:
         df = patient_info_to_sample(hadm_id)
         upload_to_db(df)
-        log_hadm_id(hadm_id)  # Log the processed hadm_id
+        log_hadm_id(hadm_id, log_file_path)  # Log the processed hadm_id
     except Exception as e:
         with print_lock:
             pbar.write(f"Error processing hadm_id {hadm_id}: {type(e).__name_} errored with message: {e}")
@@ -1030,12 +1029,16 @@ def main():
                         help='If set, will rewrite the log file')
     parser.add_argument('--max-workers', type=int, default=os.cpu_count() * 2,
                         help='The maximum number of workers to use')
+    parser.add_argument('--log-file-path', type=str, default='processed_hadm_ids.log',)
+    
     args = parser.parse_args()
 
     rewrite_log_file = args.rewrite_log_file
+    log_file_path = args.log_file_path
 
-    processed_hadm_ids = read_processed_hadm_ids(rewrite_log_file)
-    hadm_ids = [hadm_id for hadm_id in fetch_all_hadm_ids() if hadm_id not in processed_hadm_ids]
+    processed_hadm_ids = read_processed_hadm_ids(log_file_path, rewrite=rewrite_log_file)
+    all_hadm_ids = fetch_all_hadm_ids()
+    hadm_ids = [hadm_id for hadm_id in all_hadm_ids if hadm_id not in processed_hadm_ids]
 
     max_workers = args.max_workers
 
@@ -1043,7 +1046,7 @@ def main():
         # Set up the progress bar
         with tqdm(total=len(hadm_ids), desc='Processing', dynamic_ncols=True) as pbar:
             # Map each future to its hadm_id
-            future_to_hadm_id = {executor.submit(process_hadm_id, hadm_id, pbar): hadm_id for hadm_id in hadm_ids}
+            future_to_hadm_id = {executor.submit(process_hadm_id, hadm_id, pbar, log_file_path): hadm_id for hadm_id in hadm_ids}
 
             for future in as_completed(future_to_hadm_id):
                 hadm_id = future.result()  # Get the result from the future
