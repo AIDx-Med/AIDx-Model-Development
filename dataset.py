@@ -1050,10 +1050,9 @@ def process_hadm_id(hadm_id):
         engine.dispose()
         mimicllm_engine.dispose()
 
-        return hadm_id, None
+        return hadm_id, False
     except IntegrityError:
         # If the hadm_id has already been processed, log the error and continue
-        error_message = f"Error processing hadm_id {hadm_id}: hadm_id already processed"
         log_hadm_id(hadm_id, mimicllm_engine, Log)
     except Exception as e:
         error_message = f"Error processing hadm_id {hadm_id}: {type(e).__name__} errored with message: {e}"
