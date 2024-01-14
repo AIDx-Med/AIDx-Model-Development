@@ -254,7 +254,7 @@ def post_process_hosp(hospital_stay, engine):
                 poe_ids = [str(poe_id) for poe_id in poe_ids]
 
                 if len(poe_ids) == 0:
-                    hospital_stay['poe'] = []
+                    hospital_stay['poe'] = [[]]
                     continue
                 poe_detail_query = text(
                     f"select * from mimiciv.mimiciv_hosp.poe_detail where poe_id in :poe_ids").bindparams(poe_ids=tuple(poe_ids))
@@ -912,6 +912,9 @@ def generate_sample_data(timeline, hospital_stay, subject_id, hadm_id):
                     next_hosp = next_timeline[j]['data']
 
                     next_cell = next_hosp[col][0]
+                    
+                    if not isinstance(next_cell, pd.DataFrame):
+                        break
 
                     if not next_cell.equals(cell):
                         next_time = next_case['time']
