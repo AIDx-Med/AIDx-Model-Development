@@ -14,6 +14,7 @@ from threading import Lock
 
 log_file_path = "processed_hadm_ids.log"
 log_file_lock = Lock()
+print_lock = Lock()
 
 HOST_IP = 'localhost'
 DATABASE_USER = os.environ['DATABASE_USER']
@@ -869,8 +870,8 @@ def generate_df_data(example_cases, example_prompts, subject_id, hadm_id):
 
     data = pd.DataFrame()
 
+    seq_num = 0
     for i in range(len(example_cases)):
-        sample_id = f'{hadm_id}-{i}'
         patient_information = patient_timeline_to_text(
             example_cases[i]['patient_info'],
             example_cases[i]['timeline'],
@@ -879,6 +880,9 @@ def generate_df_data(example_cases, example_prompts, subject_id, hadm_id):
         user_prompts = list(example_prompts[i].keys())
 
         for prompt in user_prompts:
+            sample_id = f"{hadm_id}_{seq_num}"
+            seq_num += 1
+
             user_question = prompt_to_text[prompt]
             model_response = prompt_df_to_text(example_prompts[i][prompt], prompt)
 
@@ -992,8 +996,11 @@ def fetch_all_hadm_ids():
 def upload_to_db(df):
     df.to_sql('data', mimicllm_engine, schema='mimicllm', if_exists='append', index=False, method='multi')
 
-def read_processed_hadm_ids():
-    if not os.path.exists(log_file_path):
+def read_processed_hadm_ids(rewrite=False):
+    if not os.path.exists(log_file_path) or rewrite:
+        with open(log_file_path, 'w') as file:
+            file.write("")
+
         return set()
     with open(log_file_path, 'r') as file:
         return set(file.read().splitlines())
@@ -1003,28 +1010,32 @@ def log_hadm_id(hadm_id):
         with open(log_file_path, 'a') as file:
             file.write(f"{hadm_id}\n")
 
-def process_hadm_id(hadm_id):
+def process_hadm_id(hadm_id, pbar):
     try:
         df = patient_info_to_sample(hadm_id)
         upload_to_db(df)
         log_hadm_id(hadm_id)  # Log the processed hadm_id
     except Exception as e:
-        print(f"Error processing hadm_id {hadm_id}: {e}")
+        with print_lock:
+            pbar.write(f"Error processing hadm_id {hadm_id}: {e}")
     return hadm_id
 
 
 
 def main():
-    processed_hadm_ids = read_processed_hadm_ids()
+    rewrite_log_file = True
+
+    processed_hadm_ids = read_processed_hadm_ids(rewrite_log_file)
     hadm_ids = [hadm_id for hadm_id in fetch_all_hadm_ids() if hadm_id not in processed_hadm_ids]
+
     max_workers = os.cpu_count() * 2 # Use all available cores
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Map each future to its hadm_id
-        future_to_hadm_id = {executor.submit(process_hadm_id, hadm_id): hadm_id for hadm_id in hadm_ids}
-
         # Set up the progress bar
         with tqdm(total=len(hadm_ids), desc='Processing', dynamic_ncols=True) as pbar:
+            # Map each future to its hadm_id
+            future_to_hadm_id = {executor.submit(process_hadm_id, hadm_id, pbar): hadm_id for hadm_id in hadm_ids}
+
             for future in as_completed(future_to_hadm_id):
                 hadm_id = future.result()  # Get the result from the future
                 pbar.set_description(f"Completed hadm_id {hadm_id}")
