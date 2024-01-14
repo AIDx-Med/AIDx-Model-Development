@@ -11,6 +11,7 @@ from sqlalchemy import text
 from tqdm.auto import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
+import argparse
 
 log_file_path = "processed_hadm_ids.log"
 log_file_lock = Lock()
@@ -1023,7 +1024,13 @@ def process_hadm_id(hadm_id, pbar):
 
 
 def main():
-    rewrite_log_file = False
+    # Set up argparse for command line arguments
+    parser = argparse.ArgumentParser(description="Process MIMIC-IV data into a format that can be used by an LLM")
+    parser.add_argument('--rewrite-log-file', action='store_true',
+                        help='If set, will rewrite the log file')
+    args = parser.parse_args()
+
+    rewrite_log_file = args.rewrite_log_file
 
     processed_hadm_ids = read_processed_hadm_ids(rewrite_log_file)
     hadm_ids = [hadm_id for hadm_id in fetch_all_hadm_ids() if hadm_id not in processed_hadm_ids]
