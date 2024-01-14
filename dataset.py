@@ -9,97 +9,46 @@ import datetime
 import pandas as pd
 from sqlalchemy import text
 from tqdm.auto import tqdm
-from threading import Lock
 import argparse
 import ray
-from sqlalchemy import Column, BigInteger
 from sqlalchemy.orm import sessionmaker, declarative_base
-
-log_file_lock = Lock()
 
 HOST_IP = os.environ['DATABASE_IP']
 DATABASE_USER = os.environ['DATABASE_USER']
 DATABASE_PASSWORD = os.environ['DATABASE_PASSWORD']
 DATABASE_PORT = os.environ['DATABASE_PORT']
 
-connection_url = URL.create(
-    "postgresql+psycopg2",
-    username=DATABASE_USER,
-    password=DATABASE_PASSWORD,
-    host=HOST_IP,
-    port=int(DATABASE_PORT),
-    database="mimiciv"
-)
+# Define the ORM model within a function to avoid serialization issues
+def get_log_model(base):
+    from sqlalchemy import Column, BigInteger
 
-mimicllm_connection_url = URL.create(
-    "postgresql+psycopg2",
-    username=DATABASE_USER,
-    password=DATABASE_PASSWORD,
-    host=HOST_IP,
-    port=int(DATABASE_PORT),
-    database="mimicllm"
-)
+    class Log(base):
+        __tablename__ = 'logs'
+        __table_args__ = {'schema': 'mimicllm'}
+        hadm_id = Column(BigInteger, primary_key=True)
 
-mimicllm_engine = create_engine(mimicllm_connection_url)
+        def __init__(self, hadm_id):
+            self.hadm_id = hadm_id
 
-engine = create_engine(connection_url)
+    return Log
 
-Base = declarative_base()
-
-class Log(Base):
-    __tablename__ = 'logs'
-    __table_args__ = {'schema': 'mimicllm'}
-    hadm_id = Column(BigInteger, primary_key=True)
-
-    def __init__(self, hadm_id):
-        self.hadm_id = hadm_id
-
-query = text("""
-SELECT json_build_object(
-    schema_name, json_agg(
-        json_build_object(
-            table_name, column_names
-        )
+# Define a function to create and return a new SQLAlchemy engine
+def create_sqlalchemy_engine(database):
+    connection_url = URL.create(
+        "postgresql+psycopg2",
+        username=os.environ['DATABASE_USER'],
+        password=os.environ['DATABASE_PASSWORD'],
+        host=os.environ['DATABASE_IP'],
+        port=int(os.environ['DATABASE_PORT']),
+        database=database
     )
-)
-FROM (
-    SELECT 
-        t.table_schema as schema_name, 
-        t.table_name, 
-        json_agg(c.column_name ORDER BY c.ordinal_position) as column_names
-    FROM information_schema.tables t
-    INNER JOIN information_schema.columns c 
-        ON t.table_schema = c.table_schema AND t.table_name = c.table_name
-    WHERE t.table_schema NOT IN ('information_schema', 'pg_catalog')
-    GROUP BY t.table_schema, t.table_name
-) AS sub
-GROUP BY schema_name;
-""")
-
-# Execute the query
-with engine.connect() as con:
-    result = con.execute(query).fetchall()
-
-# Extract schemas and their respective tables with columns from the query result
-schemas_with_tables = [schema_result[0] for schema_result in result]
-
-# Flatten the list of dictionaries for each schema
-database_structure = {}
-for schema in schemas_with_tables:
-    for schema_name, tables in schema.items():
-        # Initialize the schema in the flattened dictionary if not already present
-        if schema_name not in database_structure:
-            database_structure[schema_name] = {}
-
-        # Combine the tables under the same schema
-        for table in tables:
-            database_structure[schema_name].update(table)
+    return create_engine(connection_url)
 
 
 def to_clean_records(dataframe):
     return dataframe.apply(lambda row: row.dropna().to_dict(), axis=1).tolist()
 
-def query_hosp(hadm_id):
+def query_hosp(hadm_id, database_structure, engine):
     query = text("select * from mimiciv.mimiciv_hosp.admissions where hadm_id = :hadm;").bindparams(hadm=hadm_id)
 
     hospital_stay = pd.read_sql_query(query, engine)
@@ -169,7 +118,7 @@ def query_hosp(hadm_id):
     return hospital_stay, subject_id
 
 
-def convert_icd_to_text(icd_list, icd_type):
+def convert_icd_to_text(icd_list, icd_type, engine):
     # Prepare a CASE statement for ordering
     case_statement = "CASE "
     for index, item in icd_list.iterrows():
@@ -193,12 +142,12 @@ def convert_icd_to_text(icd_list, icd_type):
     return pd.read_sql(sql_query, engine)['long_title'].tolist()
 
 
-def convert_lab_id_to_info(labs):
+def convert_lab_id_to_info(labs, engine):
     # Prepare a CASE statement for ordering
     case_statement = "CASE "
     for index, item in labs.iterrows():
-        id = item['itemid']
-        case_statement += f"WHEN itemid = {id} THEN {index} "
+        item_id = item['itemid']
+        case_statement += f"WHEN itemid = {item_id} THEN {index} "
 
     case_statement += "END"
 
@@ -221,7 +170,7 @@ def reorder_columns(df, columns):
     return df[[column for column in columns if column in df.columns]]
 
 
-def post_process_hosp(hospital_stay):
+def post_process_hosp(hospital_stay, engine):
     for column in hospital_stay.columns:
         if isinstance(hospital_stay[column][0], pd.DataFrame) and len(hospital_stay[column][0]) == 0:
             continue
@@ -244,11 +193,11 @@ def post_process_hosp(hospital_stay):
                     # remove any duplicate rows
                     diagnoses_df = diagnoses_df.drop_duplicates(subset=['icd_code', 'icd_version'])
                     
-                    ordered_diagnoses = convert_icd_to_text(diagnoses_df, 'diagnoses')
+                    ordered_diagnoses = convert_icd_to_text(diagnoses_df, 'diagnoses', engine)
 
                     hospital_stay[column] = [ordered_diagnoses]
             case 'labevents':
-                converted = convert_lab_id_to_info(hospital_stay[column][0]).sort_values(by=['charttime'])
+                converted = convert_lab_id_to_info(hospital_stay[column][0], engine).sort_values(by=['charttime'])
 
                 converted = converted.rename(columns={
                     'charttime': 'chart time',
@@ -372,7 +321,7 @@ def post_process_hosp(hospital_stay):
                     # remove any duplicate rows
                     procedures_df = procedures_df.drop_duplicates(subset=['icd_code', 'icd_version'])
 
-                    ordered_procedures = convert_icd_to_text(procedures_df, 'procedures')
+                    ordered_procedures = convert_icd_to_text(procedures_df, 'procedures', engine)
                     
                     procedures_df['name'] = ordered_procedures
 
@@ -429,7 +378,7 @@ def post_process_hosp(hospital_stay):
     return hospital_stay
 
 
-def query_ed(hadm_id):
+def query_ed(hadm_id, database_structure, engine):
     ed_stay_query = text("select * from mimiciv.mimiciv_ed.edstays where hadm_id = :hadm_id").bindparams(
         hadm_id=hadm_id)
 
@@ -542,7 +491,7 @@ def query_ed(hadm_id):
     return ed_stays
 
 
-def query_discharge_note(hadm_id, hospital_stay):
+def query_discharge_note(hadm_id, hospital_stay, engine):
     discharge_note_query = text("select * from mimiciv.mimiciv_note.discharge where hadm_id = :hadm_id").bindparams(
         hadm_id=hadm_id)
 
@@ -561,15 +510,13 @@ def query_discharge_note(hadm_id, hospital_stay):
     hospital_stay['discharge note'] = [discharge_note_df]
 
 
-def generate_timeline(hospital_stay, ed_stays, subject_id):
-    timeline = []
-
+def generate_timeline(hospital_stay, ed_stays, subject_id, engine):
     # add hospital stay
-    timeline.append({
+    timeline = [{
         'type': 'Hospital Stay',
         'data': hospital_stay,
         'time': hospital_stay['admission time'][0]
-    })
+    }]
 
     # add ed stays
     for i, row in ed_stays.iterrows():
@@ -581,7 +528,7 @@ def generate_timeline(hospital_stay, ed_stays, subject_id):
 
     # sort timeline by time
     timeline = sorted(timeline, key=lambda k: k['time'])
-    query_radiology_note(hospital_stay, subject_id, timeline)
+    query_radiology_note(hospital_stay, subject_id, timeline, engine)
 
     col_order = [
         'patient information',
@@ -615,7 +562,7 @@ def generate_timeline(hospital_stay, ed_stays, subject_id):
     return timeline
 
 
-def query_radiology_note(hospital_stay, subject_id, timeline):
+def query_radiology_note(hospital_stay, subject_id, timeline, engine):
     radiology_note_query = text(
         "select * from mimiciv.mimiciv_note.radiology where subject_id = :subject_id and charttime < :discharge_time").bindparams(
         subject_id=subject_id, discharge_time=timeline[-1]['time'])
@@ -977,19 +924,19 @@ def generate_sample_data(timeline, hospital_stay, subject_id, hadm_id):
 
     return generate_df_data(cases, prompts, subject_id, hadm_id)
 
-def patient_info_to_sample(hadm_id):
-    hospital_stay, subject_id = query_hosp(hadm_id)
-    hospital_stay = post_process_hosp(hospital_stay)
+def patient_info_to_sample(hadm_id, database_structure, engine):
+    hospital_stay, subject_id = query_hosp(hadm_id, database_structure, engine)
+    hospital_stay = post_process_hosp(hospital_stay, engine)
 
-    ed_stays = query_ed(hadm_id)
+    ed_stays = query_ed(hadm_id, database_structure, engine)
 
-    query_discharge_note(hadm_id, hospital_stay)
+    query_discharge_note(hadm_id, hospital_stay, engine)
 
-    timeline = generate_timeline(hospital_stay, ed_stays, subject_id)
+    timeline = generate_timeline(hospital_stay, ed_stays, subject_id, engine)
 
     return generate_sample_data(timeline, hospital_stay, subject_id, hadm_id)
 
-def fetch_all_hadm_ids():
+def fetch_all_hadm_ids(engine):
     query = text("""
     SELECT a.hadm_id
     FROM mimiciv_hosp.admissions a
@@ -1004,10 +951,10 @@ def fetch_all_hadm_ids():
 
     return list_results
 
-def upload_to_db(df):
+def upload_to_db(df, mimicllm_engine):
     df.to_sql('data', mimicllm_engine, schema='mimicllm', if_exists='append', index=False, method='multi')
 
-def read_processed_hadm_ids(rewrite=False):
+def read_processed_hadm_ids(mimicllm_engine, Log, rewrite=False):
     Session = sessionmaker(bind=mimicllm_engine)
     session = Session()
 
@@ -1026,7 +973,7 @@ def read_processed_hadm_ids(rewrite=False):
     finally:
         session.close()
 
-def log_hadm_id(hadm_id):
+def log_hadm_id(hadm_id, mimicllm_engine, Log):
     Session = sessionmaker(bind=mimicllm_engine)
     session = Session()
 
@@ -1043,13 +990,69 @@ def log_hadm_id(hadm_id):
 
 @ray.remote
 def process_hadm_id(hadm_id):
+    engine = create_sqlalchemy_engine('mimiciv')
+    mimicllm_engine = create_sqlalchemy_engine('mimicllm')
+    
+    Base = declarative_base()
+    Log = get_log_model(Base)
+    
+    query = text("""
+    SELECT json_build_object(
+        schema_name, json_agg(
+            json_build_object(
+                table_name, column_names
+            )
+        )
+    )
+    FROM (
+        SELECT 
+            t.table_schema as schema_name, 
+            t.table_name, 
+            json_agg(c.column_name ORDER BY c.ordinal_position) as column_names
+        FROM information_schema.tables t
+        INNER JOIN information_schema.columns c 
+            ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+        WHERE t.table_schema NOT IN ('information_schema', 'pg_catalog')
+        GROUP BY t.table_schema, t.table_name
+    ) AS sub
+    GROUP BY schema_name;
+    """)
+
+    # Execute the query
+    with engine.connect() as con:
+        result = con.execute(query).fetchall()
+
+    # Extract schemas and their respective tables with columns from the query result
+    schemas_with_tables = [schema_result[0] for schema_result in result]
+
+    # Flatten the list of dictionaries for each schema
+    database_structure = {}
+    for schema in schemas_with_tables:
+        for schema_name, tables in schema.items():
+            # Initialize the schema in the flattened dictionary if not already present
+            if schema_name not in database_structure:
+                database_structure[schema_name] = {}
+
+            # Combine the tables under the same schema
+            for table in tables:
+                database_structure[schema_name].update(table)
+
+    # main code
     try:
-        df = patient_info_to_sample(hadm_id)
-        upload_to_db(df)
-        log_hadm_id(hadm_id)  # Log the processed hadm_id
+        df = patient_info_to_sample(hadm_id, database_structure, engine)
+        upload_to_db(df, mimicllm_engine)
+        log_hadm_id(hadm_id, mimicllm_engine, Log)  # Log the processed hadm_id
+
+        engine.dispose()
+        mimicllm_engine.dispose()
+
         return hadm_id, None
     except Exception as e:
         error_message = f"Error processing hadm_id {hadm_id}: {type(e).__name__} errored with message: {e}"
+
+        engine.dispose()
+        mimicllm_engine.dispose()
+
         return hadm_id, error_message
 
 def main():
@@ -1062,23 +1065,36 @@ def main():
 
     rewrite_log_file = args.rewrite_log_db
 
-    processed_hadm_ids = read_processed_hadm_ids(rewrite=rewrite_log_file)
-    all_hadm_ids = fetch_all_hadm_ids()
+    engine = create_sqlalchemy_engine('mimiciv')
+    mimicllm_engine = create_sqlalchemy_engine('mimicllm')
+
+    Base = declarative_base()
+    Log = get_log_model(Base)
+
+    processed_hadm_ids = read_processed_hadm_ids(mimicllm_engine, Log, rewrite=rewrite_log_file)
+    all_hadm_ids = fetch_all_hadm_ids(engine)
     hadm_ids = [hadm_id for hadm_id in all_hadm_ids if hadm_id not in processed_hadm_ids]
 
-    context = ray.init()
+    # dispose of the engine to avoid memory leaks
+    engine.dispose()
+    mimicllm_engine.dispose()
+
+    context = ray.init(dashboard_host="0.0.0.0")
     print(f"Connected to Ray Dashboard at {context.dashboard_url}")
 
     # Set up the progress bar
     with tqdm(total=len(hadm_ids), desc='Processing', dynamic_ncols=True) as pbar:
         futures = [process_hadm_id.remote(hadm_id) for hadm_id in hadm_ids]
 
-        for future in ray.get(futures):
-            hadm_id, error = future
-            if error:
-                print(error)  # Ray takes care of orderly printing
-            pbar.set_description(f"Completed hadm_id {hadm_id}")
-            pbar.update(1)
+        remaining_futures = set(futures)
+        while remaining_futures:
+            done_futures, remaining_futures = ray.wait(list(remaining_futures))
+            for future in done_futures:
+                hadm_id, error = ray.get(future)
+                if error:
+                    print(error)  # Ray takes care of orderly printing
+                pbar.set_description(f"Completed hadm_id {hadm_id}")
+                pbar.update(1)
 
 
 if __name__ == '__main__':
