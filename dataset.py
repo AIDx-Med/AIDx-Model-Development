@@ -1097,9 +1097,12 @@ def main():
         while remaining_futures:
             done_futures, remaining_futures = ray.wait(list(remaining_futures))
             for future in done_futures:
-                hadm_id, error = ray.get(future)
-                if error:
-                    print(error)  # Ray takes care of orderly printing
+                try:
+                    hadm_id, error = ray.get(future)
+                    if error:
+                        pbar.write(error)  # Ray takes care of orderly printing
+                except Exception as e:
+                    pbar.write(f"Error processing hadm_id {hadm_id}: {type(e).__name__} errored with message: {e}")
                 pbar.set_description(f"Completed hadm_id {hadm_id}")
                 pbar.update(1)
 
