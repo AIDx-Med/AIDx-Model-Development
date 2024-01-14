@@ -1018,7 +1018,7 @@ def process_hadm_id(hadm_id, pbar):
         log_hadm_id(hadm_id)  # Log the processed hadm_id
     except Exception as e:
         with print_lock:
-            pbar.write(f"Error processing hadm_id {hadm_id}: {e}")
+            pbar.write(f"Error processing hadm_id {hadm_id}: {type(e).__name_} errored with message: {e}")
     return hadm_id
 
 
@@ -1028,6 +1028,8 @@ def main():
     parser = argparse.ArgumentParser(description="Process MIMIC-IV data into a format that can be used by an LLM")
     parser.add_argument('--rewrite-log-file', action='store_true',
                         help='If set, will rewrite the log file')
+    parser.add_argument('--max-workers', type=int, default=os.cpu_count() * 2,
+                        help='The maximum number of workers to use')
     args = parser.parse_args()
 
     rewrite_log_file = args.rewrite_log_file
@@ -1035,7 +1037,7 @@ def main():
     processed_hadm_ids = read_processed_hadm_ids(rewrite_log_file)
     hadm_ids = [hadm_id for hadm_id in fetch_all_hadm_ids() if hadm_id not in processed_hadm_ids]
 
-    max_workers = os.cpu_count() * 2 # Use all available cores
+    max_workers = args.max_workers
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Set up the progress bar
