@@ -1060,7 +1060,7 @@ def main():
 
     args = parser.parse_args()
 
-    rewrite_log_file = args.rewrite_log_file
+    rewrite_log_file = args.rewrite_log_db
 
     processed_hadm_ids = read_processed_hadm_ids(rewrite=rewrite_log_file)
     all_hadm_ids = fetch_all_hadm_ids()
