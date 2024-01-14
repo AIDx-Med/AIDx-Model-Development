@@ -1023,7 +1023,7 @@ def process_hadm_id(hadm_id, pbar):
 
 
 def main():
-    rewrite_log_file = True
+    rewrite_log_file = False
 
     processed_hadm_ids = read_processed_hadm_ids(rewrite_log_file)
     hadm_ids = [hadm_id for hadm_id in fetch_all_hadm_ids() if hadm_id not in processed_hadm_ids]
