@@ -1024,7 +1024,7 @@ def main():
         future_to_hadm_id = {executor.submit(process_hadm_id, hadm_id): hadm_id for hadm_id in hadm_ids}
 
         # Set up the progress bar
-        with tqdm(total=len(hadm_ids), desc='Processing') as pbar:
+        with tqdm(total=len(hadm_ids), desc='Processing', dynamic_ncols=True) as pbar:
             for future in as_completed(future_to_hadm_id):
                 hadm_id = future.result()  # Get the result from the future
                 pbar.set_description(f"Completed hadm_id {hadm_id}")
@@ -1032,5 +1032,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    # hadm_id = 20713954
-    # df = patient_info_to_sample(hadm_id)
