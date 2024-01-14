@@ -9,14 +9,15 @@ import datetime
 import pandas as pd
 from sqlalchemy import text
 from tqdm.auto import tqdm
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 import argparse
+import ray
+from sqlalchemy import Column, BigInteger
+from sqlalchemy.orm import sessionmaker, declarative_base
 
 log_file_lock = Lock()
-print_lock = Lock()
 
-HOST_IP = 'localhost'
+HOST_IP = os.environ['DATABASE_IP']
 DATABASE_USER = os.environ['DATABASE_USER']
 DATABASE_PASSWORD = os.environ['DATABASE_PASSWORD']
 DATABASE_PORT = os.environ['DATABASE_PORT']
@@ -42,6 +43,16 @@ mimicllm_connection_url = URL.create(
 mimicllm_engine = create_engine(mimicllm_connection_url)
 
 engine = create_engine(connection_url)
+
+Base = declarative_base()
+
+class Log(Base):
+    __tablename__ = 'logs'
+    __table_args__ = {'schema': 'mimicllm'}
+    hadm_id = Column(BigInteger, primary_key=True)
+
+    def __init__(self, hadm_id):
+        self.hadm_id = hadm_id
 
 query = text("""
 SELECT json_build_object(
@@ -996,62 +1007,79 @@ def fetch_all_hadm_ids():
 def upload_to_db(df):
     df.to_sql('data', mimicllm_engine, schema='mimicllm', if_exists='append', index=False, method='multi')
 
-def read_processed_hadm_ids(log_file_path, rewrite=False):
-    if not os.path.exists(log_file_path) or rewrite:
-        with open(log_file_path, 'w') as file:
-            file.write("")
+def read_processed_hadm_ids(rewrite=False):
+    Session = sessionmaker(bind=mimicllm_engine)
+    session = Session()
 
-        return set()
-    with open(log_file_path, 'r') as file:
-        return {int(line.strip()) for line in file if line.strip().isdigit()}
+    if rewrite:
+        # Use TRUNCATE to efficiently clear the table
+        session.execute("TRUNCATE TABLE mimicllm.logs;")
+        session.commit()
 
-def log_hadm_id(hadm_id, log_file_path):
-    with log_file_lock:
-        with open(log_file_path, 'a') as file:
-            file.write(f"{hadm_id}\n")
+    try:
+        # Query the database for all hadm_id values
+        processed_hadm_ids = {log.hadm_id for log in session.query(Log.hadm_id).all()}
+        return processed_hadm_ids
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
 
-def process_hadm_id(hadm_id, pbar, log_file_path):
+def log_hadm_id(hadm_id):
+    Session = sessionmaker(bind=mimicllm_engine)
+    session = Session()
+
+    new_log = Log(hadm_id=hadm_id)
+    session.add(new_log)
+
+    try:
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
+
+@ray.remote
+def process_hadm_id(hadm_id):
     try:
         df = patient_info_to_sample(hadm_id)
         upload_to_db(df)
-        log_hadm_id(hadm_id, log_file_path)  # Log the processed hadm_id
+        log_hadm_id(hadm_id)  # Log the processed hadm_id
+        return hadm_id, None
     except Exception as e:
-        with print_lock:
-            pbar.write(f"Error processing hadm_id {hadm_id}: {type(e).__name_} errored with message: {e}")
-    return hadm_id
-
-
+        error_message = f"Error processing hadm_id {hadm_id}: {type(e).__name__} errored with message: {e}"
+        return hadm_id, error_message
 
 def main():
     # Set up argparse for command line arguments
     parser = argparse.ArgumentParser(description="Process MIMIC-IV data into a format that can be used by an LLM")
-    parser.add_argument('--rewrite-log-file', action='store_true',
-                        help='If set, will rewrite the log file')
-    parser.add_argument('--max-workers', type=int, default=os.cpu_count() * 2,
-                        help='The maximum number of workers to use')
-    parser.add_argument('--log-file-path', type=str, default='processed_hadm_ids.log',)
-    
+    parser.add_argument('--rewrite-log-db', action='store_true',
+                        help='If set, will rewrite the log database')
+
     args = parser.parse_args()
 
     rewrite_log_file = args.rewrite_log_file
-    log_file_path = args.log_file_path
 
-    processed_hadm_ids = read_processed_hadm_ids(log_file_path, rewrite=rewrite_log_file)
+    processed_hadm_ids = read_processed_hadm_ids(rewrite=rewrite_log_file)
     all_hadm_ids = fetch_all_hadm_ids()
     hadm_ids = [hadm_id for hadm_id in all_hadm_ids if hadm_id not in processed_hadm_ids]
 
-    max_workers = args.max_workers
+    context = ray.init()
+    print(f"Connected to Ray Dashboard at {context.dashboard_url}")
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Set up the progress bar
-        with tqdm(total=len(hadm_ids), desc='Processing', dynamic_ncols=True) as pbar:
-            # Map each future to its hadm_id
-            future_to_hadm_id = {executor.submit(process_hadm_id, hadm_id, pbar, log_file_path): hadm_id for hadm_id in hadm_ids}
+    # Set up the progress bar
+    with tqdm(total=len(hadm_ids), desc='Processing', dynamic_ncols=True) as pbar:
+        futures = [process_hadm_id.remote(hadm_id) for hadm_id in hadm_ids]
 
-            for future in as_completed(future_to_hadm_id):
-                hadm_id = future.result()  # Get the result from the future
-                pbar.set_description(f"Completed hadm_id {hadm_id}")
-                pbar.update(1)
+        for future in ray.get(futures):
+            hadm_id, error = future
+            if error:
+                print(error)  # Ray takes care of orderly printing
+            pbar.set_description(f"Completed hadm_id {hadm_id}")
+            pbar.update(1)
+
 
 if __name__ == '__main__':
     main()
