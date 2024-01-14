@@ -1,3 +1,5 @@
+import traceback
+
 from dotenv import load_dotenv
 from sqlalchemy.exc import IntegrityError
 
@@ -277,24 +279,28 @@ def post_process_hosp(hospital_stay, engine):
                 poe_df = hospital_stay['poe'][0]
                 prescriptions_df = hospital_stay['prescriptions'][0]
 
-                # remove any row if the order_type is Medicine and poe_id is not in prescriptions
-                poe_df = poe_df[
-                    (poe_df['order_type'] != 'Medications') |
-                    (poe_df['poe_id'].isin(prescriptions_df['poe_id']))
-                    ]
+                if len(poe_df) > 0:
+                    # remove any row if the order_type is Medicine and poe_id is not in prescriptions
+                    poe_df = poe_df[
+                        (poe_df['order_type'] != 'Medications') |
+                        (poe_df['poe_id'].isin(prescriptions_df['poe_id']))
+                        ]
 
-                # Get all the prescriptions that have a non-null value in the `poe_id` column
-                poe_prescriptions = prescriptions_df[prescriptions_df['poe_id'].notnull()]
-                poe_prescriptions = poe_prescriptions.merge(poe_df, on='poe_id', how='outer')
+                    # Get all the prescriptions that have a non-null value in the `poe_id` column
+                    poe_prescriptions = prescriptions_df[prescriptions_df['poe_id'].notnull()]
+                    poe_prescriptions = poe_prescriptions.merge(poe_df, on='poe_id', how='outer')
 
-                # if a row in poe_prescriptions has both a starttime and an ordertime, set ordertime as null
-                poe_prescriptions.loc[(poe_prescriptions['starttime'].notnull()) & (
-                    poe_prescriptions['ordertime'].notnull()), 'ordertime'] = None
+                    # if a row in poe_prescriptions has both a starttime and an ordertime, set ordertime as null
+                    poe_prescriptions.loc[(poe_prescriptions['starttime'].notnull()) & (
+                        poe_prescriptions['ordertime'].notnull()), 'ordertime'] = None
 
-                poe_prescriptions['temp'] = poe_prescriptions['starttime'].combine_first(poe_prescriptions['ordertime'])
+                    poe_prescriptions['temp'] = poe_prescriptions['starttime'].combine_first(
+                        poe_prescriptions['ordertime'])
 
-                poe_prescriptions = poe_prescriptions.sort_values(by=['temp'])
-                poe_prescriptions = poe_prescriptions.drop('temp', axis=1)
+                    poe_prescriptions = poe_prescriptions.sort_values(by=['temp'])
+                    poe_prescriptions = poe_prescriptions.drop('temp', axis=1)
+                else:
+                    poe_prescriptions = prescriptions_df.sort_values(by=['starttime'])
 
                 poe_prescriptions = poe_prescriptions.rename(columns={
                     'poe_id': 'poe id',
@@ -1008,7 +1014,7 @@ def log_hadm_id(hadm_id, mimicllm_engine, Log):
 
 
 @ray.remote
-def process_hadm_id(hadm_id):
+def process_hadm_id(hadm_id, debug=False):
     engine = create_sqlalchemy_engine('mimiciv')
     mimicllm_engine = create_sqlalchemy_engine('mimicllm')
 
@@ -1076,6 +1082,8 @@ def process_hadm_id(hadm_id):
         return hadm_id, False
     except Exception as e:
         error_message = f"Error processing hadm_id {hadm_id}: {type(e).__name__} errored with message: {e}"
+        if debug:
+            error_message = f"Error processing hadm_id {hadm_id}:\n{traceback.format_exc()}"
 
         engine.dispose()
         mimicllm_engine.dispose()
