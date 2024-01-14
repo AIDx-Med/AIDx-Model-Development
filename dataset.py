@@ -1,4 +1,5 @@
 from dotenv import load_dotenv
+from sqlalchemy.exc import IntegrityError
 
 load_dotenv()
 
@@ -982,8 +983,11 @@ def log_hadm_id(hadm_id, mimicllm_engine, Log):
 
     try:
         session.commit()
+    except IntegrityError:
+        session.rollback()
     except Exception as e:
         session.rollback()
+        
         raise e
     finally:
         session.close()
@@ -1047,6 +1051,10 @@ def process_hadm_id(hadm_id):
         mimicllm_engine.dispose()
 
         return hadm_id, None
+    except IntegrityError:
+        # If the hadm_id has already been processed, log the error and continue
+        error_message = f"Error processing hadm_id {hadm_id}: hadm_id already processed"
+        log_hadm_id(hadm_id, mimicllm_engine, Log)
     except Exception as e:
         error_message = f"Error processing hadm_id {hadm_id}: {type(e).__name__} errored with message: {e}"
 
