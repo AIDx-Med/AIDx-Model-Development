@@ -10,6 +10,10 @@ import pandas as pd
 from sqlalchemy import text
 from tqdm.auto import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
+
+log_file_path = "processed_hadm_ids.log"
+log_file_lock = Lock()
 
 HOST_IP = 'localhost'
 DATABASE_USER = os.environ['DATABASE_USER']
@@ -208,7 +212,6 @@ def reorder_columns(df, columns):
 def post_process_hosp(hospital_stay):
     for column in hospital_stay.columns:
         if isinstance(hospital_stay[column][0], pd.DataFrame) and len(hospital_stay[column][0]) == 0:
-            hospital_stay = hospital_stay.drop(column, axis=1)
             continue
 
         match column:
@@ -288,6 +291,9 @@ def post_process_hosp(hospital_stay):
                 poe_ids = poe_df['poe_id'].tolist()
                 poe_ids = [str(poe_id) for poe_id in poe_ids]
 
+                if len(poe_ids) == 0:
+                    hospital_stay['poe'] = []
+                    continue
                 poe_detail_query = text(
                     f"select * from mimiciv.mimiciv_hosp.poe_detail where poe_id in :poe_ids").bindparams(poe_ids=tuple(poe_ids))
                 poe_detail_df = pd.read_sql(poe_detail_query, engine).drop(['poe_seq', 'subject_id'], axis=1)
@@ -864,6 +870,7 @@ def generate_df_data(example_cases, example_prompts, subject_id, hadm_id):
     data = pd.DataFrame()
 
     for i in range(len(example_cases)):
+        sample_id = f'{hadm_id}-{i}'
         patient_information = patient_timeline_to_text(
             example_cases[i]['patient_info'],
             example_cases[i]['timeline'],
@@ -880,6 +887,7 @@ def generate_df_data(example_cases, example_prompts, subject_id, hadm_id):
             data = pd.concat([
                 data,
                 pd.DataFrame([{
+                    'sample_id': sample_id,
                     'subject_id': subject_id,
                     'hadm_id': hadm_id,
                     'input': user_input,
@@ -984,16 +992,31 @@ def fetch_all_hadm_ids():
 def upload_to_db(df):
     df.to_sql('data', mimicllm_engine, schema='mimicllm', if_exists='append', index=False, method='multi')
 
+def read_processed_hadm_ids():
+    if not os.path.exists(log_file_path):
+        return set()
+    with open(log_file_path, 'r') as file:
+        return set(file.read().splitlines())
+
+def log_hadm_id(hadm_id):
+    with log_file_lock:
+        with open(log_file_path, 'a') as file:
+            file.write(f"{hadm_id}\n")
+
 def process_hadm_id(hadm_id):
     try:
         df = patient_info_to_sample(hadm_id)
         upload_to_db(df)
+        log_hadm_id(hadm_id)  # Log the processed hadm_id
     except Exception as e:
         print(f"Error processing hadm_id {hadm_id}: {e}")
     return hadm_id
 
+
+
 def main():
-    hadm_ids = fetch_all_hadm_ids()
+    processed_hadm_ids = read_processed_hadm_ids()
+    hadm_ids = [hadm_id for hadm_id in fetch_all_hadm_ids() if hadm_id not in processed_hadm_ids]
     max_workers = os.cpu_count() * 2 # Use all available cores
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -1009,5 +1032,5 @@ def main():
 
 if __name__ == '__main__':
     main()
-    # hadm_id = 24756996
+    # hadm_id = 20713954
     # df = patient_info_to_sample(hadm_id)
