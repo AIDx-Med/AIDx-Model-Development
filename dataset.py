@@ -19,6 +19,7 @@ DATABASE_USER = os.environ['DATABASE_USER']
 DATABASE_PASSWORD = os.environ['DATABASE_PASSWORD']
 DATABASE_PORT = os.environ['DATABASE_PORT']
 
+
 # Define the ORM model within a function to avoid serialization issues
 def get_log_model(base):
     from sqlalchemy import Column, BigInteger
@@ -32,6 +33,7 @@ def get_log_model(base):
             self.hadm_id = hadm_id
 
     return Log
+
 
 # Define a function to create and return a new SQLAlchemy engine
 def create_sqlalchemy_engine(database):
@@ -48,6 +50,7 @@ def create_sqlalchemy_engine(database):
 
 def to_clean_records(dataframe):
     return dataframe.apply(lambda row: row.dropna().to_dict(), axis=1).tolist()
+
 
 def query_hosp(hadm_id, database_structure, engine):
     query = text("select * from mimiciv.mimiciv_hosp.admissions where hadm_id = :hadm;").bindparams(hadm=hadm_id)
@@ -190,10 +193,10 @@ def post_process_hosp(hospital_stay, engine):
             case 'diagnoses_icd':
                 if len(hospital_stay[column][0]) > 0:
                     diagnoses_df = hospital_stay[column][0]
-                    
+
                     # remove any duplicate rows
                     diagnoses_df = diagnoses_df.drop_duplicates(subset=['icd_code', 'icd_version'])
-                    
+
                     ordered_diagnoses = convert_icd_to_text(diagnoses_df, 'diagnoses', engine)
 
                     hospital_stay[column] = [ordered_diagnoses]
@@ -246,7 +249,7 @@ def post_process_hosp(hospital_stay, engine):
                     (poe_df['order_type'] != 'Lab') &
                     (poe_df['order_type'] != 'Consult') &
                     (poe_df['order_type'] != 'Blood Bank')
-                ]
+                    ]
 
                 # for each poe_id, check if there is a corresponding row in mimiciv_hosp.poe_detail (sql)
                 # if there is, add the poe_detail to the poe row
@@ -257,7 +260,8 @@ def post_process_hosp(hospital_stay, engine):
                     hospital_stay['poe'] = [[]]
                     continue
                 poe_detail_query = text(
-                    f"select * from mimiciv.mimiciv_hosp.poe_detail where poe_id in :poe_ids").bindparams(poe_ids=tuple(poe_ids))
+                    f"select * from mimiciv.mimiciv_hosp.poe_detail where poe_id in :poe_ids").bindparams(
+                    poe_ids=tuple(poe_ids))
                 poe_detail_df = pd.read_sql(poe_detail_query, engine).drop(['poe_seq', 'subject_id'], axis=1)
 
                 if len(poe_detail_df) > 0:
@@ -323,7 +327,7 @@ def post_process_hosp(hospital_stay, engine):
                     procedures_df = procedures_df.drop_duplicates(subset=['icd_code', 'icd_version'])
 
                     ordered_procedures = convert_icd_to_text(procedures_df, 'procedures', engine)
-                    
+
                     procedures_df['name'] = ordered_procedures
 
                     procedures_df = procedures_df.drop(['icd_code', 'icd_version'], axis=1).sort_values(
@@ -614,6 +618,7 @@ def query_radiology_note(hospital_stay, subject_id, timeline, engine):
     radiology_note_df = radiology_note_df.rename(columns=column_name_mapping)
     hospital_stay['radiology notes'] = [radiology_note_df]
 
+
 def format_df_to_text(df):
     output = ""
 
@@ -728,6 +733,7 @@ def filter_timeline_by_time(patient_info, timeline, time):
             })
 
     return filtered_patient_info, filtered_timeline
+
 
 def get_time_intervals(timeline):
     time_columns_to_include = [
@@ -912,7 +918,7 @@ def generate_sample_data(timeline, hospital_stay, subject_id, hadm_id):
                     next_hosp = next_timeline[j]['data']
 
                     next_cell = next_hosp[col][0]
-                    
+
                     if not isinstance(next_cell, pd.DataFrame):
                         break
 
@@ -928,6 +934,7 @@ def generate_sample_data(timeline, hospital_stay, subject_id, hadm_id):
 
     return generate_df_data(cases, prompts, subject_id, hadm_id)
 
+
 def patient_info_to_sample(hadm_id, database_structure, engine):
     hospital_stay, subject_id = query_hosp(hadm_id, database_structure, engine)
     hospital_stay = post_process_hosp(hospital_stay, engine)
@@ -939,6 +946,7 @@ def patient_info_to_sample(hadm_id, database_structure, engine):
     timeline = generate_timeline(hospital_stay, ed_stays, subject_id, engine)
 
     return generate_sample_data(timeline, hospital_stay, subject_id, hadm_id)
+
 
 def fetch_all_hadm_ids(engine):
     query = text("""
@@ -955,8 +963,10 @@ def fetch_all_hadm_ids(engine):
 
     return list_results
 
+
 def upload_to_db(df, mimicllm_engine):
     df.to_sql('data', mimicllm_engine, schema='mimicllm', if_exists='append', index=False, method='multi')
+
 
 def read_processed_hadm_ids(mimicllm_engine, Log, rewrite=False):
     Session = sessionmaker(bind=mimicllm_engine)
@@ -977,6 +987,7 @@ def read_processed_hadm_ids(mimicllm_engine, Log, rewrite=False):
     finally:
         session.close()
 
+
 def log_hadm_id(hadm_id, mimicllm_engine, Log):
     Session = sessionmaker(bind=mimicllm_engine)
     session = Session()
@@ -990,19 +1001,20 @@ def log_hadm_id(hadm_id, mimicllm_engine, Log):
         session.rollback()
     except Exception as e:
         session.rollback()
-        
+
         raise e
     finally:
         session.close()
+
 
 @ray.remote
 def process_hadm_id(hadm_id):
     engine = create_sqlalchemy_engine('mimiciv')
     mimicllm_engine = create_sqlalchemy_engine('mimicllm')
-    
+
     Base = declarative_base()
     Log = get_log_model(Base)
-    
+
     query = text("""
     SELECT json_build_object(
         schema_name, json_agg(
@@ -1069,6 +1081,7 @@ def process_hadm_id(hadm_id):
         mimicllm_engine.dispose()
 
         return hadm_id, error_message
+
 
 def main():
     # Set up argparse for command line arguments
