@@ -291,11 +291,15 @@ def post_process_hosp(hospital_stay, engine):
                     poe_prescriptions = poe_prescriptions.merge(poe_df, on='poe_id', how='outer')
 
                     # if a row in poe_prescriptions has both a starttime and an ordertime, set ordertime as null
-                    poe_prescriptions.loc[(poe_prescriptions['starttime'].notnull()) & (
-                        poe_prescriptions['ordertime'].notnull()), 'ordertime'] = None
+                    poe_prescriptions.loc[((poe_prescriptions['starttime'].notnull()) & (poe_prescriptions['starttime'].notna())) &
+                                          ((poe_prescriptions['ordertime'].notnull()) & (poe_prescriptions['ordertime'].notna())), 'ordertime'] = None
 
+                    # remove na
+                    poe_prescriptions = poe_prescriptions.dropna(subset=['starttime', 'ordertime'])
+                    
                     poe_prescriptions['temp'] = poe_prescriptions['starttime'].combine_first(
-                        poe_prescriptions['ordertime'])
+                        poe_prescriptions['ordertime']
+                    )
 
                     poe_prescriptions = poe_prescriptions.sort_values(by=['temp'])
                     poe_prescriptions = poe_prescriptions.drop('temp', axis=1)
