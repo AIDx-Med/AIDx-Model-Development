@@ -16,18 +16,7 @@ DATABASE_PASSWORD = os.environ["DATABASE_PASSWORD"]
 DATABASE_PORT = os.environ["DATABASE_PORT"]
 
 
-def main():
-    # Set up argparse for command line arguments
-    parser = argparse.ArgumentParser(
-        description="Process MIMIC-IV data into a format that can be used by an LLM"
-    )
-    parser.add_argument(
-        "--rewrite-log-db",
-        action="store_true",
-        help="If set, will rewrite the log database",
-    )
-    args = parser.parse_args()
-
+def main(args):
     rewrite_log_file = args.rewrite_log_db
 
     engine = create_sqlalchemy_engine("mimiciv")
