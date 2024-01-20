@@ -3,7 +3,7 @@ import pandas as pd
 from src.processing.utils import reorder_columns
 
 
-def query_hosp(hadm_id, database_structure, engine):
+def query_hosp(hadm_id, database_structure, engine, diagnoses_only=False):
     query = text(
         "select * from mimiciv.mimiciv_hosp.admissions where hadm_id = :hadm;"
     ).bindparams(hadm=hadm_id)
@@ -82,6 +82,9 @@ def query_hosp(hadm_id, database_structure, engine):
     for column, v in database_structure["mimiciv_hosp"].items():
         if "hadm_id" in v:
             if column in hosp_tables_to_ignore:
+                continue
+
+            if diagnoses_only and column != "diagnoses_icd":
                 continue
 
             sql_query = text(
@@ -251,7 +254,7 @@ def query_ed(hadm_id, database_structure, engine):
     return ed_stays
 
 
-def query_discharge_note(hadm_id, hospital_stay, engine):
+def query_discharge_note(engine, hadm_id, hospital_stay=None):
     discharge_note_query = text(
         "select * from mimiciv.mimiciv_note.discharge where hadm_id = :hadm_id"
     ).bindparams(hadm_id=hadm_id)
@@ -267,7 +270,10 @@ def query_discharge_note(hadm_id, hospital_stay, engine):
         columns={"storetime": "chart time", "text": "discharge note"}
     )
 
-    hospital_stay["discharge note"] = [discharge_note_df]
+    if hospital_stay is not None:
+        hospital_stay["discharge note"] = [discharge_note_df]
+    else:
+        return discharge_note_df
 
 
 def query_radiology_note(hospital_stay, subject_id, timeline, engine):

@@ -4,3 +4,6 @@ psycopg2-binary
 python-dotenv
 pandas
 tqdm
+datasets
+transformers
+ray

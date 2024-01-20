@@ -4,14 +4,14 @@ import os
 
 
 # Define the ORM model within a function to avoid serialization issues
-def get_log_model():
+def get_log_model(log_table="logs"):
     from sqlalchemy import Column, BigInteger
     from sqlalchemy.orm import declarative_base
 
     base = declarative_base()
 
     class Log(base):
-        __tablename__ = "logs"
+        __tablename__ = log_table
         __table_args__ = {"schema": "mimicllm"}
         hadm_id = Column(BigInteger, primary_key=True)
 

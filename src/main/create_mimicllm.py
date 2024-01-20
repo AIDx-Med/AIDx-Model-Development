@@ -1,12 +1,14 @@
-from dotenv import load_dotenv, find_dotenv
+from dotenv import load_dotenv
 import os
 from tqdm.auto import tqdm
-import argparse
 import ray
 
 from src.database.engine import create_sqlalchemy_engine, get_log_model
 from src.database.logging import read_processed_hadm_ids, fetch_all_hadm_ids
-from src.processing.workflow import process_hadm_id_ray
+from src.processing.workflow import (
+    process_hadm_id_ray,
+    process_discharge_note_ray,
+)
 
 
 load_dotenv("config/.env")
@@ -18,11 +20,14 @@ DATABASE_PORT = os.environ["DATABASE_PORT"]
 
 def main(args):
     rewrite_log_file = args.rewrite_log_db
+    discharge_note_only = args.discharge_note_only
 
     engine = create_sqlalchemy_engine("mimiciv")
     mimicllm_engine = create_sqlalchemy_engine("mimicllm")
 
-    log_model = get_log_model()
+    log_model = get_log_model(
+        log_table="logs" if not discharge_note_only else "discharge_note_logs"
+    )
 
     processed_hadm_ids = read_processed_hadm_ids(
         mimicllm_engine, log_model, rewrite=rewrite_log_file
@@ -41,7 +46,12 @@ def main(args):
 
     # Set up the progress bar
     with tqdm(total=len(hadm_ids), desc="Processing", dynamic_ncols=True) as pbar:
-        futures = [process_hadm_id_ray.remote(hadm_id) for hadm_id in hadm_ids]
+        if discharge_note_only:
+            futures = [
+                process_discharge_note_ray.remote(hadm_id) for hadm_id in hadm_ids
+            ]
+        else:
+            futures = [process_hadm_id_ray.remote(hadm_id) for hadm_id in hadm_ids]
 
         remaining_futures = set(futures)
         while remaining_futures:
@@ -57,7 +67,3 @@ def main(args):
                     )
                 pbar.set_description(f"Completed hadm_id {hadm_id}")
                 pbar.update(1)
-
-
-if __name__ == "__main__":
-    main()

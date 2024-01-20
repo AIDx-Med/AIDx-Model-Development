@@ -17,6 +17,11 @@ def main():
         action="store_true",
         help="If set, will rewrite the log database",
     )
+    create_mimicllm_parser.add_argument(
+        "--discharge-note-only",
+        action="store_true",
+        help="If set, will only process discharge notes",
+    )
     create_mimicllm_parser.set_defaults(func=create_mimicllm_main)
 
     args = parser.parse_args(args=None if sys.argv[1:] else ['--help'])

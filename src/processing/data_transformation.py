@@ -551,14 +551,19 @@ def generate_sample_data(timeline, hospital_stay, subject_id, hadm_id):
     return generate_df_data(cases, prompts, subject_id, hadm_id)
 
 
-def patient_info_to_sample(hadm_id, database_structure, engine):
-    hospital_stay, subject_id = query_hosp(hadm_id, database_structure, engine)
+def patient_info_to_sample(
+    hadm_id, database_structure, engine, discharge_note_only=False
+):
+    hospital_stay, subject_id = query_hosp(
+        hadm_id, database_structure, engine, discharge_note_only
+    )
     hospital_stay = post_process_hosp(hospital_stay, engine)
+    query_discharge_note(engine, hadm_id, hospital_stay)
 
-    ed_stays = query_ed(hadm_id, database_structure, engine)
+    if discharge_note_only:
+        return hospital_stay, subject_id
+    else:
+        ed_stays = query_ed(hadm_id, database_structure, engine)
+        timeline = generate_timeline(hospital_stay, ed_stays, subject_id, engine)
 
-    query_discharge_note(hadm_id, hospital_stay, engine)
-
-    timeline = generate_timeline(hospital_stay, ed_stays, subject_id, engine)
-
-    return generate_sample_data(timeline, hospital_stay, subject_id, hadm_id)
+        return generate_sample_data(timeline, hospital_stay, subject_id, hadm_id)
