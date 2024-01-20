@@ -5,5 +5,5 @@ FROM lambda-stack:22.04
 WORKDIR /workspace
 
 # Install Packages
-COPY requirements.txt .
+COPY ../requirements.txt .
 RUN pip install --force-reinstall -r requirements.txt
