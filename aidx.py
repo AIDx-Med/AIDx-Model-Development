@@ -2,6 +2,7 @@ import argparse
 import sys
 
 from src.main.create_mimicllm import main as create_mimicllm_main
+from src.main.tokenize_mimicllm import main as tokenize_mimicllm_main
 
 def main():
     parser = argparse.ArgumentParser(
@@ -11,7 +12,6 @@ def main():
 
     # Define a subparser for each command
     create_mimicllm_parser = subparsers.add_parser("create-mimicllm", help="Create the MIMIC-LLM database")
-
     create_mimicllm_parser.add_argument(
         "--rewrite-log-db",
         action="store_true",
@@ -23,6 +23,20 @@ def main():
         help="If set, will only process discharge notes",
     )
     create_mimicllm_parser.set_defaults(func=create_mimicllm_main)
+
+    tokenize_mimicllm_parser = subparsers.add_parser("tokenize-mimicllm", help="Tokenize the MIMIC-LLM database")
+    tokenize_mimicllm_parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=128,
+        help="The batch size to use for tokenization",
+    )
+    tokenize_mimicllm_parser.add_argument(
+        "--rewrite-log-db",
+        action="store_true",
+        help="If set, will rewrite the log database",
+    )
+    tokenize_mimicllm_parser.set_defaults(func=tokenize_mimicllm_main)
 
     args = parser.parse_args(args=None if sys.argv[1:] else ['--help'])
     args.func(args)

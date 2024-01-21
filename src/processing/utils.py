@@ -1,4 +1,6 @@
 import pandas as pd
+import ray
+from tqdm.auto import tqdm
 
 
 def reorder_columns(df, columns):
@@ -61,3 +63,21 @@ def convert_lab_id_to_info(labs, engine):
 
 def to_clean_records(dataframe):
     return dataframe.apply(lambda row: row.dropna().to_dict(), axis=1).tolist()
+
+
+@ray.remote
+class ProgressActor:
+    def __init__(self, total):
+        self.progress = tqdm(total=total)
+
+    def update(self, n):
+        self.progress.update(n)
+
+    def write(self, message):
+        self.progress.write(message)
+
+    def set_description(self, description):
+        self.progress.set_description(description)
+
+    def set_postfix_str(self, postfix):
+        self.progress.set_postfix_str(postfix)

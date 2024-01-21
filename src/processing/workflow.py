@@ -1,14 +1,24 @@
 import pandas as pd
 import ray
-from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 import traceback
+import pickle
+
+from tqdm.auto import tqdm
+from transformers import AutoTokenizer
 
 from src.database.engine import create_sqlalchemy_engine, get_log_model
 from src.database.logging import log_hadm_id
-from src.database.queries import upload_to_db
+from src.database.queries import upload_to_db, get_mimiciv_schema
 from src.processing.data_transformation import patient_info_to_sample
 from src.processing.timeline_generation import format_df_to_text
+from src.processing.tokenization import (
+    get_data,
+    extract_base_id,
+    extract_numeric_id,
+    generate_prompt,
+    tokenize,
+)
 
 
 def process_hadm_id(hadm_id, debug=False):
@@ -17,48 +27,7 @@ def process_hadm_id(hadm_id, debug=False):
 
     log_model = get_log_model()
 
-    query = text(
-        """
-    SELECT json_build_object(
-        schema_name, json_agg(
-            json_build_object(
-                table_name, column_names
-            )
-        )
-    )
-    FROM (
-        SELECT 
-            t.table_schema as schema_name, 
-            t.table_name, 
-            json_agg(c.column_name ORDER BY c.ordinal_position) as column_names
-        FROM information_schema.tables t
-        INNER JOIN information_schema.columns c 
-            ON t.table_schema = c.table_schema AND t.table_name = c.table_name
-        WHERE t.table_schema NOT IN ('information_schema', 'pg_catalog')
-        GROUP BY t.table_schema, t.table_name
-    ) AS sub
-    GROUP BY schema_name;
-    """
-    )
-
-    # Execute the query
-    with engine.connect() as con:
-        result = con.execute(query).fetchall()
-
-    # Extract schemas and their respective tables with columns from the query result
-    schemas_with_tables = [schema_result[0] for schema_result in result]
-
-    # Flatten the list of dictionaries for each schema
-    database_structure = {}
-    for schema in schemas_with_tables:
-        for schema_name, tables in schema.items():
-            # Initialize the schema in the flattened dictionary if not already present
-            if schema_name not in database_structure:
-                database_structure[schema_name] = {}
-
-            # Combine the tables under the same schema
-            for table in tables:
-                database_structure[schema_name].update(table)
+    database_structure = get_mimiciv_schema(engine)
 
     # main code
     try:
@@ -102,48 +71,7 @@ def process_discharge_note(hadm_id, debug=False):
 
     log_model = get_log_model(log_table="discharge_note_logs")
 
-    query = text(
-        """
-    SELECT json_build_object(
-        schema_name, json_agg(
-            json_build_object(
-                table_name, column_names
-            )
-        )
-    )
-    FROM (
-        SELECT 
-            t.table_schema as schema_name, 
-            t.table_name, 
-            json_agg(c.column_name ORDER BY c.ordinal_position) as column_names
-        FROM information_schema.tables t
-        INNER JOIN information_schema.columns c 
-            ON t.table_schema = c.table_schema AND t.table_name = c.table_name
-        WHERE t.table_schema NOT IN ('information_schema', 'pg_catalog')
-        GROUP BY t.table_schema, t.table_name
-    ) AS sub
-    GROUP BY schema_name;
-    """
-    )
-
-    # Execute the query
-    with engine.connect() as con:
-        result = con.execute(query).fetchall()
-
-    # Extract schemas and their respective tables with columns from the query result
-    schemas_with_tables = [schema_result[0] for schema_result in result]
-
-    # Flatten the list of dictionaries for each schema
-    database_structure = {}
-    for schema in schemas_with_tables:
-        for schema_name, tables in schema.items():
-            # Initialize the schema in the flattened dictionary if not already present
-            if schema_name not in database_structure:
-                database_structure[schema_name] = {}
-
-            # Combine the tables under the same schema
-            for table in tables:
-                database_structure[schema_name].update(table)
+    database_structure = get_mimiciv_schema(engine)
 
     # main code
     try:
@@ -200,3 +128,72 @@ def process_discharge_note(hadm_id, debug=False):
 @ray.remote
 def process_discharge_note_ray(hadm_id, debug=False):
     return process_discharge_note(hadm_id, debug=debug)
+
+
+def tokenize_batch(batch_ids, progress_actor=None):
+    max_length = 32_000
+
+    model_id = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+    tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True)
+
+    engine = create_sqlalchemy_engine("mimicllm")
+
+    system_prompt = ""
+
+    log_model = get_log_model("tokenization_logs")
+
+    batch_data = get_data(batch_ids, engine)
+
+    last_skipped_id = {}
+    tokenized_prompts = []
+
+    if progress_actor is None:
+        pbar = tqdm(total=len(batch_data), desc="Tokenizing", dynamic_ncols=True)
+
+    for index, row in batch_data.iterrows():
+        log_hadm_id(row["sample_id"], engine, log_model)
+        base_id = extract_base_id(row["sample_id"])
+        numeric_id = extract_numeric_id(row["sample_id"])
+
+        if progress_actor is None:
+            pbar.set_description(f"Samples - {row['sample_id']}")
+        else:
+            progress_actor.set_description.remote(f"Samples - {row['sample_id']}")
+
+        # Skip logic for non-discharge samples
+        if base_id in last_skipped_id and numeric_id is not None:
+            if numeric_id >= last_skipped_id[base_id] and not row["sample_id"].endswith(
+                "discharge"
+            ):
+                continue
+
+        prompt = generate_prompt(system_prompt, row["input"], row["output"])
+        tokenized = tokenize(prompt, tokenizer)
+
+        if progress_actor is None:
+            pbar.set_postfix_str(f"Length: {len(tokenized['input_ids'][0])}")
+        else:
+            progress_actor.set_postfix_str.remote(
+                f"Length: {len(tokenized['input_ids'][0])}"
+            )
+
+        if len(tokenized["input_ids"][0]) > max_length:
+            if numeric_id is not None:
+                last_skipped_id[base_id] = numeric_id
+        else:
+            tokenized_prompts.append(tokenized)
+
+        if progress_actor is None:
+            pbar.update(1)
+        else:
+            progress_actor.update.remote(1)
+
+    serialized_tokens = pd.DataFrame(tokenized_prompts).map(lambda x: pickle.dumps(x))
+    upload_to_db(serialized_tokens, engine, table="tokenized_data")
+
+    engine.dispose()
+
+
+@ray.remote
+def tokenize_batch_ray(batch_ids, progress_actor):
+    return tokenize_batch(batch_ids, progress_actor)
