@@ -182,6 +182,8 @@ def tokenize_batch(batch_ids, progress_actor=None):
     serialized_tokens = pd.DataFrame(tokenized_prompts).map(lambda x: pickle.dumps(x))
     upload_to_db(serialized_tokens, engine, table="tokenized_data")
 
+    if progress_actor is None:
+        pbar.close()
     engine.dispose()
 
 
