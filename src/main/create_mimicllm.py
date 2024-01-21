@@ -19,7 +19,7 @@ DATABASE_PORT = os.environ["DATABASE_PORT"]
 
 
 def main(args):
-    rewrite_log_file = args.rewrite_log_db
+    rewrite_log_db = args.rewrite_log_db
     discharge_note_only = args.discharge_note_only
 
     engine = create_sqlalchemy_engine("mimiciv")
@@ -30,7 +30,7 @@ def main(args):
     )
 
     processed_hadm_ids = read_processed_hadm_ids(
-        mimicllm_engine, log_model, rewrite=rewrite_log_file
+        mimicllm_engine, log_model, rewrite=rewrite_log_db
     )
     all_hadm_ids = fetch_all_hadm_ids(engine)
     hadm_ids = [
