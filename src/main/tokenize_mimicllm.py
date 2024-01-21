@@ -48,6 +48,8 @@ def main(args):
     num_cpus = ray.available_resources()["CPU"]
     print(f"Number of CPUs available to Ray: {num_cpus}")
 
+    print(f"Batch size: {batch_size}")
+
     # organize sample_ids into batches
     batched_sample_ids = batch_strings(sample_ids, batch_size // num_cpus)
 
