@@ -1,6 +1,7 @@
 from sqlalchemy import text as sql_text
 import pandas as pd
 
+
 def tokenize(text, tokenizer):
     return tokenizer(text, return_tensors="pt")
 
