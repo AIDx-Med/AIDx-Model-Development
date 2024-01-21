@@ -8,3 +8,8 @@ datasets
 transformers
 ray
 ipywidgets
+pyarrow
+scikit-learn
+torch
+peft
+accelerate
