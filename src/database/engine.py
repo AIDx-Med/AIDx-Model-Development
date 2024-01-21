@@ -32,3 +32,18 @@ def create_sqlalchemy_engine(database):
         database=database,
     )
     return create_engine(connection_url)
+
+def create_tokenized_data_model():
+    from sqlalchemy.orm import declarative_base
+    from sqlalchemy import Column, BigInteger, Text
+
+    base = declarative_base()
+    class TokenizedDataBase(base):
+        __tablename__ = 'tokenized_data'
+        __table_args__ = {"schema": "mimicllm"}
+
+        token_id = Column(BigInteger, primary_key=True)
+        attention_mask = Column(Text)
+        input_ids = Column(Text)
+
+    return TokenizedDataBase
