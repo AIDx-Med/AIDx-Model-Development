@@ -154,12 +154,6 @@ def tokenize_batch(batch_ids, progress_actor=None):
         log_hadm_id(row["sample_id"], engine, log_model)
         base_id = extract_base_id(row["sample_id"])
         numeric_id = extract_numeric_id(row["sample_id"])
-
-        if progress_actor is None:
-            pbar.set_description(f"Samples - {row['sample_id']}")
-        else:
-            progress_actor.set_description.remote(f"Samples - {row['sample_id']}")
-
         # Skip logic for non-discharge samples
         if base_id in last_skipped_id and numeric_id is not None:
             if numeric_id >= last_skipped_id[base_id] and not row["sample_id"].endswith(
@@ -171,11 +165,8 @@ def tokenize_batch(batch_ids, progress_actor=None):
         tokenized = tokenize(prompt, tokenizer)
 
         if progress_actor is None:
+            pbar.set_description(f"Samples - {row['sample_id']}")
             pbar.set_postfix_str(f"Length: {len(tokenized['input_ids'][0])}")
-        else:
-            progress_actor.set_postfix_str.remote(
-                f"Length: {len(tokenized['input_ids'][0])}"
-            )
 
         if len(tokenized["input_ids"][0]) > max_length:
             if numeric_id is not None:
