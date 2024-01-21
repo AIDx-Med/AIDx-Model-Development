@@ -1,8 +1,6 @@
 import ray
 from ray.experimental.tqdm_ray import tqdm
 from transformers.utils.logging import disable_progress_bar
-from dotenv import load_dotenv
-import os
 
 from src.processing.tokenization import batch_strings, get_all_sample_ids
 from src.database.engine import create_sqlalchemy_engine, get_log_model
@@ -10,12 +8,6 @@ from src.database.logging import read_processed_hadm_ids
 from src.processing.workflow import tokenize_batch_ray
 
 disable_progress_bar()
-
-load_dotenv("../../config/.env")
-HOST_IP = os.environ["DATABASE_IP"]
-DATABASE_USER = os.environ["DATABASE_USER"]
-DATABASE_PASSWORD = os.environ["DATABASE_PASSWORD"]
-DATABASE_PORT = os.environ["DATABASE_PORT"]
 
 remote_tqdm = ray.remote(tqdm)
 

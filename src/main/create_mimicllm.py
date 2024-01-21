@@ -1,5 +1,3 @@
-from dotenv import load_dotenv
-import os
 from tqdm.auto import tqdm
 import ray
 
@@ -9,13 +7,6 @@ from src.processing.workflow import (
     process_hadm_id_ray,
     process_discharge_note_ray,
 )
-
-
-load_dotenv("config/.env")
-HOST_IP = os.environ["DATABASE_IP"]
-DATABASE_USER = os.environ["DATABASE_USER"]
-DATABASE_PASSWORD = os.environ["DATABASE_PASSWORD"]
-DATABASE_PORT = os.environ["DATABASE_PORT"]
 
 
 def main(args):

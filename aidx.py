@@ -1,10 +1,19 @@
 import argparse
 import sys
+from dotenv import load_dotenv
+import os
 
 from src.main.create_mimicllm import main as create_mimicllm_main
 from src.main.tokenize_mimicllm import main as tokenize_mimicllm_main
 from src.main.create_parquet_datasets import main as create_parquet_datasets_main
 from src.main.fine_tune_model import main as fine_tune_model_main
+
+
+load_dotenv("config/.env")
+HOST_IP = os.environ["DATABASE_IP"]
+DATABASE_USER = os.environ["DATABASE_USER"]
+DATABASE_PASSWORD = os.environ["DATABASE_PASSWORD"]
+DATABASE_PORT = os.environ["DATABASE_PORT"]
 
 
 def main():

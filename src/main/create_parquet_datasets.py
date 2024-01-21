@@ -1,4 +1,3 @@
-from dotenv import load_dotenv
 import os
 from sqlalchemy.orm import sessionmaker
 import pandas as pd
@@ -8,12 +7,6 @@ from sklearn.model_selection import train_test_split
 from tqdm.auto import tqdm
 
 from src.database.engine import create_sqlalchemy_engine, create_tokenized_data_model
-
-load_dotenv("config/.env")
-HOST_IP = os.environ["DATABASE_IP"]
-DATABASE_USER = os.environ["DATABASE_USER"]
-DATABASE_PASSWORD = os.environ["DATABASE_PASSWORD"]
-DATABASE_PORT = os.environ["DATABASE_PORT"]
 
 
 def main(args):
