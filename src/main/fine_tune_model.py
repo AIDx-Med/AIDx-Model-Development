@@ -6,17 +6,19 @@ import os
 
 from src.processing.utils import transform_dataset_to_tensor, BatchPaddedCollator
 
+
 def main(args):
     model_name = args.model_name
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
     tokenizer.add_special_tokens({"pad_token": "[PAD]"})
 
-    model = AutoModelForCausalLM.from_pretrained(model_name,
-                                                 load_in_4bit=True,
-                                                 torch_dtype=torch.float16,
-                                                 device_map="auto",
-                                                 )
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        load_in_4bit=True,
+        torch_dtype=torch.float16,
+        device_map="auto",
+    )
 
     # Prepare model for k-bit training
     model = prepare_model_for_kbit_training(model)
@@ -31,15 +33,17 @@ def main(args):
         target_modules=["w1", "w2", "w3"],  # just targeting the MoE layers.
         lora_dropout=lora_dropout,
         bias="none",
-        task_type="CAUSAL_LM"
+        task_type="CAUSAL_LM",
     )
 
     model = get_peft_model(model, config)
 
     parquet_dir = args.parquet_dir
-    train_parquet_file = os.path.join(parquet_dir, 'train.parquet')
+    train_parquet_file = os.path.join(parquet_dir, "train.parquet")
 
-    initial_dataset = load_dataset('parquet', data_files=train_parquet_file, streaming=True)
+    initial_dataset = load_dataset(
+        "parquet", data_files=train_parquet_file, streaming=True
+    )
     dataset = initial_dataset.map(transform_dataset_to_tensor, batched=True)
     train_data = dataset["train"]
 
@@ -55,9 +59,9 @@ def main(args):
             learning_rate=1e-4,
             logging_steps=2,
             optim="adamw_torch",
-            output_dir="aidx-mixtral"
+            output_dir="aidx-mixtral",
         ),
-        data_collator=data_collator
+        data_collator=data_collator,
     )
 
     trainer.train()

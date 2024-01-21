@@ -6,14 +6,15 @@ from src.main.tokenize_mimicllm import main as tokenize_mimicllm_main
 from src.main.create_parquet_datasets import main as create_parquet_datasets_main
 from src.main.fine_tune_model import main as fine_tune_model_main
 
+
 def main():
-    parser = argparse.ArgumentParser(
-        description="AIDx Entry Point"
-    )
+    parser = argparse.ArgumentParser(description="AIDx Entry Point")
     subparsers = parser.add_subparsers(title="subcommands", required=True)
 
     # Define a subparser for each command
-    create_mimicllm_parser = subparsers.add_parser("create-mimicllm", help="Create the MIMIC-LLM database")
+    create_mimicllm_parser = subparsers.add_parser(
+        "create-mimicllm", help="Create the MIMIC-LLM database"
+    )
     create_mimicllm_parser.add_argument(
         "--rewrite-log-db",
         action="store_true",
@@ -26,7 +27,9 @@ def main():
     )
     create_mimicllm_parser.set_defaults(func=create_mimicllm_main)
 
-    tokenize_mimicllm_parser = subparsers.add_parser("tokenize-mimicllm", help="Tokenize the MIMIC-LLM database")
+    tokenize_mimicllm_parser = subparsers.add_parser(
+        "tokenize-mimicllm", help="Tokenize the MIMIC-LLM database"
+    )
     tokenize_mimicllm_parser.add_argument(
         "--batch-size",
         type=int,
@@ -40,7 +43,9 @@ def main():
     )
     tokenize_mimicllm_parser.set_defaults(func=tokenize_mimicllm_main)
 
-    create_parquet_datasets_parser = subparsers.add_parser("create-parquet-datasets", help="Create the Parquet train/test datasets")
+    create_parquet_datasets_parser = subparsers.add_parser(
+        "create-parquet-datasets", help="Create the Parquet train/test datasets"
+    )
     create_parquet_datasets_parser.add_argument(
         "--chunk-size",
         type=int,
@@ -61,7 +66,9 @@ def main():
     )
     create_parquet_datasets_parser.set_defaults(func=create_parquet_datasets_main)
 
-    fine_tune_model_parser = subparsers.add_parser("fine-tune-model", help="Fine tune the model")
+    fine_tune_model_parser = subparsers.add_parser(
+        "fine-tune-model", help="Fine tune the model"
+    )
     fine_tune_model_parser.add_argument(
         "--model-name",
         type=str,
@@ -76,8 +83,9 @@ def main():
     )
     fine_tune_model_parser.set_defaults(func=fine_tune_model_main)
 
-    args = parser.parse_args(args=None if sys.argv[1:] else ['--help'])
+    args = parser.parse_args(args=None if sys.argv[1:] else ["--help"])
     args.func(args)
+
 
 if __name__ == "__main__":
     main()

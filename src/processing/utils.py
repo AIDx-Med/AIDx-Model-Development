@@ -65,22 +65,27 @@ def convert_lab_id_to_info(labs, engine):
 def to_clean_records(dataframe):
     return dataframe.apply(lambda row: row.dropna().to_dict(), axis=1).tolist()
 
+
 def pickle_to_tensor(x):
     deserialized = pickle.loads(bytes.fromhex(x.replace("\\x", "")))
     return deserialized
 
+
 def transform_dataset_to_tensor(examples):
-    examples['attention_mask'] = [pickle_to_tensor(x) for x in examples['attention_mask']]
-    examples['input_ids'] = [pickle_to_tensor(x) for x in examples['input_ids']]
+    examples["attention_mask"] = [
+        pickle_to_tensor(x) for x in examples["attention_mask"]
+    ]
+    examples["input_ids"] = [pickle_to_tensor(x) for x in examples["input_ids"]]
 
     return examples
 
+
 class BatchPaddedCollator(DataCollatorForLanguageModeling):
     def __call__(self, examples):
-        batch = {'input_ids': [], 'attention_mask': []}
+        batch = {"input_ids": [], "attention_mask": []}
         for example in examples:
-            batch['input_ids'].append(example['input_ids'][0])
-            batch['attention_mask'].append(example['attention_mask'][0])
-        batch = self.tokenizer.pad(batch, return_tensors='pt', padding='longest')
+            batch["input_ids"].append(example["input_ids"][0])
+            batch["attention_mask"].append(example["attention_mask"][0])
+        batch = self.tokenizer.pad(batch, return_tensors="pt", padding="longest")
 
         return batch

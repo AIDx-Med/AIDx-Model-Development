@@ -9,18 +9,19 @@ from tqdm.auto import tqdm
 
 from src.database.engine import create_sqlalchemy_engine, create_tokenized_data_model
 
-load_dotenv('config/.env')
-HOST_IP = os.environ['DATABASE_IP']
-DATABASE_USER = os.environ['DATABASE_USER']
-DATABASE_PASSWORD = os.environ['DATABASE_PASSWORD']
-DATABASE_PORT = os.environ['DATABASE_PORT']
+load_dotenv("config/.env")
+HOST_IP = os.environ["DATABASE_IP"]
+DATABASE_USER = os.environ["DATABASE_USER"]
+DATABASE_PASSWORD = os.environ["DATABASE_PASSWORD"]
+DATABASE_PORT = os.environ["DATABASE_PORT"]
+
 
 def main(args):
     chunk_size = args.chunk_size
     test_size = args.test_size
     parquet_dir = args.parquet_dir
 
-    engine = create_sqlalchemy_engine('mimicllm')
+    engine = create_sqlalchemy_engine("mimicllm")
     session_maker = sessionmaker(bind=engine)
     session = session_maker()
 
@@ -28,8 +29,8 @@ def main(args):
     total_rows = session.query(tokenized_data_model).count()
 
     os.makedirs(parquet_dir, exist_ok=True)
-    train_parquet_file = os.path.join(parquet_dir, 'train.parquet')
-    test_parquet_file = os.path.join(parquet_dir, 'test.parquet')
+    train_parquet_file = os.path.join(parquet_dir, "train.parquet")
+    test_parquet_file = os.path.join(parquet_dir, "test.parquet")
 
     last_id = 0
 
@@ -40,9 +41,15 @@ def main(args):
     with tqdm(total=total_rows, desc="Processing") as pbar:
         while True:
             # Query the database in chunks ordered by a unique column
-            query = session.query(tokenized_data_model).order_by(tokenized_data_model.token_id).filter(
-                tokenized_data_model.token_id > last_id).limit(chunk_size)
-            chunk = pd.read_sql(query.statement, session.bind).drop(columns=['token_id'])
+            query = (
+                session.query(tokenized_data_model)
+                .order_by(tokenized_data_model.token_id)
+                .filter(tokenized_data_model.token_id > last_id)
+                .limit(chunk_size)
+            )
+            chunk = pd.read_sql(query.statement, session.bind).drop(
+                columns=["token_id"]
+            )
 
             if chunk.empty:
                 break
@@ -55,16 +62,20 @@ def main(args):
 
             # Write train chunk
             if train_writer is None:
-                train_writer = pq.ParquetWriter(train_parquet_file, train_table.schema, compression='snappy')
+                train_writer = pq.ParquetWriter(
+                    train_parquet_file, train_table.schema, compression="snappy"
+                )
             train_writer.write_table(train_table)
 
             # Write test chunk
             if test_writer is None:
-                test_writer = pq.ParquetWriter(test_parquet_file, test_table.schema, compression='snappy')
+                test_writer = pq.ParquetWriter(
+                    test_parquet_file, test_table.schema, compression="snappy"
+                )
 
             test_writer.write_table(test_table)
 
-            last_id = int(chunk['token_id'].iloc[-1])
+            last_id = int(chunk["token_id"].iloc[-1])
 
             # Update progress bar
             pbar.update(len(chunk))
