@@ -45,17 +45,17 @@ def main(args):
     test_parquet_file = os.path.join(parquet_dir, "test.parquet")
 
     initial_dataset = load_dataset(
-        "parquet", data_files=train_parquet_file, streaming=True
+        "parquet", data_files=train_parquet_file, streaming=True, split="train"
     )
     dataset = initial_dataset.map(transform_dataset_to_tensor, batched=True)
 
     test_dataset = load_dataset(
-        "parquet", data_files=test_parquet_file, streaming=True
+        "parquet", data_files=test_parquet_file, streaming=True, split="test"
     )
-    test_data = test_dataset.map(transform_dataset_to_tensor, batched=True)
+    test_dataset = test_dataset.map(transform_dataset_to_tensor, batched=True)
 
     train_data = dataset["train"]
-    test_data = dataset["test"]
+    test_data = test_dataset["test"]
 
     data_collator = BatchPaddedCollator(tokenizer, mlm=False)
 
@@ -93,7 +93,7 @@ def main(args):
     trainer.save_metrics("all", metrics)
 
     # evaluate the model using bert-score
-    eval_result = trainer.evaluate(eval_dataset=test_data)
+    eval_result = trainer.evaluate(eval_dataset=test_data, metric_key_prefix="test")
     trainer.log_metrics("test", eval_result)
     trainer.save_metrics("test", eval_result)
 
