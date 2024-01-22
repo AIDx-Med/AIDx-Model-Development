@@ -29,7 +29,7 @@ def main(args):
         for sample_id in all_sample_ids
         if sample_id not in processed_sample_ids
     ]
-    print(f"Found {''.format(len(sample_ids))} sample IDs to process")
+    print(f"Found {'{:,}'.format(len(sample_ids))} sample IDs to process")
 
     # dispose of the engine to avoid memory leaks
     engine.dispose()
