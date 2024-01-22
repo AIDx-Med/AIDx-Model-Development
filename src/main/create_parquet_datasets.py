@@ -40,9 +40,9 @@ def main(args):
                 .filter(tokenized_data_model.token_id > last_id)
                 .limit(chunk_size)
             )
-            chunk = pd.read_sql(query.statement, session.bind).drop(
-                columns=["token_id"]
-            )
+            chunk = pd.read_sql(query.statement, session.bind)
+            last_id = int(chunk["token_id"].iloc[-1])
+            chunk = chunk.drop(columns=["token_id"])
 
             if chunk.empty:
                 break
@@ -67,8 +67,6 @@ def main(args):
                 )
 
             test_writer.write_table(test_table)
-
-            last_id = int(chunk["token_id"].iloc[-1])
 
             # Update progress bar
             pbar.update(len(chunk))
