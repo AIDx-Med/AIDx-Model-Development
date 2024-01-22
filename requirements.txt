@@ -13,3 +13,5 @@ scikit-learn
 torch
 peft
 accelerate
+evaluate
+bert_score

@@ -1,8 +1,10 @@
+import numpy as np
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments
 from peft import prepare_model_for_kbit_training, LoraConfig, get_peft_model
 from datasets import load_dataset
 import os
+from evaluate import load
 
 from src.processing.utils import transform_dataset_to_tensor, BatchPaddedCollator
 
@@ -40,14 +42,29 @@ def main(args):
 
     parquet_dir = args.parquet_dir
     train_parquet_file = os.path.join(parquet_dir, "train.parquet")
+    test_parquet_file = os.path.join(parquet_dir, "test.parquet")
 
     initial_dataset = load_dataset(
         "parquet", data_files=train_parquet_file, streaming=True
     )
     dataset = initial_dataset.map(transform_dataset_to_tensor, batched=True)
+
+    test_dataset = load_dataset(
+        "parquet", data_files=test_parquet_file, streaming=True
+    )
+    test_data = test_dataset.map(transform_dataset_to_tensor, batched=True)
+
     train_data = dataset["train"]
+    test_data = dataset["test"]
 
     data_collator = BatchPaddedCollator(tokenizer, mlm=False)
+
+    metric = load("bertscore")
+
+    def compute_metrics(eval_pred):
+        logits, labels = eval_pred
+        predictions = np.argmax(logits, axis=-1)
+        return metric.compute(predictions=predictions, references=labels, model_type='nfliu/scibert_basevocab_uncased')
 
     trainer = Trainer(
         model=model,
@@ -60,8 +77,23 @@ def main(args):
             logging_steps=2,
             optim="adamw_torch",
             output_dir="aidx-mixtral",
+            load_best_model_at_end=True,
+            compute_metrics=compute_metrics,
         ),
         data_collator=data_collator,
     )
 
-    trainer.train()
+    train_result = trainer.train()
+
+    # save the best model as safetensors
+    trainer.save_model("aidx-mixtral")
+
+    metrics = train_result.metrics
+    trainer.log_metrics("all", metrics)
+    trainer.save_metrics("all", metrics)
+
+    # evaluate the model using bert-score
+    eval_result = trainer.evaluate(eval_dataset=test_data)
+    trainer.log_metrics("test", eval_result)
+    trainer.save_metrics("test", eval_result)
+
