@@ -8,13 +8,19 @@ def tokenize(text, tokenizer):
 
 def generate_prompt(system, input_text, output_text, separate=False):
     # convert to instruction formatting
-    input_prompt = f"<|im_start>system\n{system}\n<|im_end|>\n<|im_start|>user\n{input_text}\n<|im_end|><|im_start|>assistant\n"
+    input_prompt = f"<|im_start|>system\n{system}\n<|im_end|>\n<|im_start|>user\n{input_text}\n<|im_end|>\n<|im_start|>assistant\n"
     output_prompt = f"{output_text}\n<|im_end|></s>"
 
     if separate:
         return {"input": input_prompt, "output": output_prompt}
 
     return input_prompt + output_prompt
+
+def extract_prompt(prompt):
+    input_prompt, output_prompt = prompt.split("<|im_end|>")
+    input_prompt = input_prompt.split("<|im_start|>")
+    output_prompt = output_prompt.split("<|im_start|>")
+    return input_prompt[2], output_prompt[1]
 
 
 def format_batch_query(batch, start_at=0):
