@@ -2,7 +2,6 @@ import pandas as pd
 import ray
 from sqlalchemy.exc import IntegrityError
 import traceback
-import pickle
 
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer
@@ -18,6 +17,7 @@ from src.processing.tokenization import (
     extract_numeric_id,
     generate_prompt,
     tokenize,
+    serialize_tokenized_row
 )
 
 
@@ -138,7 +138,7 @@ def tokenize_batch(batch_ids, progress_actor=None):
 
     engine = create_sqlalchemy_engine("mimicllm")
 
-    system_prompt = ""
+    system_prompt = "You are AIDx, a specialized Large Language Model designed to assist doctors in clinical decision-making. Your task is to analyze patient data and provide concise medical recommendations. Your output should include suggestions for diagnoses, treatment, and future actions. Ensure your advice aligns with current medical standards, prioritizing accuracy, relevance, and patient safety. Remember, your role is to support medical professionals in making informed decisions about patient care."
 
     log_model = get_log_model("tokenization_logs")
 
@@ -172,19 +172,36 @@ def tokenize_batch(batch_ids, progress_actor=None):
             if numeric_id is not None:
                 last_skipped_id[base_id] = numeric_id
         else:
-            tokenized_prompts.append(tokenized)
+            tokenized_prompts.append({
+                "sample_id": row["sample_id"],
+                "attention_mask": tokenized["attention_mask"][0],
+                "input_ids": tokenized["input_ids"][0],
+                "token_count": len(tokenized["input_ids"][0]),
+                "valid": len(tokenized["input_ids"][0]) < max_length
+            })
 
         if progress_actor is None:
             pbar.update(1)
         else:
             progress_actor.update.remote(1)
 
-    serialized_tokens = pd.DataFrame(tokenized_prompts).map(lambda x: pickle.dumps(x))
-    upload_to_db(serialized_tokens, engine, table="tokenized_data")
+    # filter out invalid prompts
+    num_tokens = 0
+
+    tokenized_dataframe = pd.DataFrame(tokenized_prompts)
+    if "valid" in tokenized_dataframe.columns:
+        tokenized_dataframe = tokenized_dataframe[tokenized_dataframe["valid"]]
+
+        serialized_tokens = tokenized_dataframe.apply(serialize_tokenized_row, axis=1).drop(columns=["valid"])
+        upload_to_db(serialized_tokens, engine, table="tokenized_data")
+
+        num_tokens = tokenized_dataframe['token_count'].sum()
 
     if progress_actor is None:
         pbar.close()
     engine.dispose()
+
+    return num_tokens
 
 
 @ray.remote

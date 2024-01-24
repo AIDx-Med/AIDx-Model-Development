@@ -1,3 +1,5 @@
+import pickle
+
 from sqlalchemy import text as sql_text
 import pandas as pd
 
@@ -15,12 +17,6 @@ def generate_prompt(system, input_text, output_text, separate=False):
         return {"input": input_prompt, "output": output_prompt}
 
     return input_prompt + output_prompt
-
-def extract_prompt(prompt):
-    input_prompt, output_prompt = prompt.split("<|im_end|>")
-    input_prompt = input_prompt.split("<|im_start|>")
-    output_prompt = output_prompt.split("<|im_start|>")
-    return input_prompt[2], output_prompt[1]
 
 
 def format_batch_query(batch, start_at=0):
@@ -90,7 +86,6 @@ def batch_strings(string_list, batch_size):
 
     return batches
 
-
 def get_all_sample_ids(engine):
     query = sql_text(
         """
@@ -101,3 +96,14 @@ def get_all_sample_ids(engine):
     )
     df = pd.read_sql(query, engine)
     return df["sample_id"].tolist()
+
+def serialize_tokenized_row(row):
+    attn_mask = pickle.dumps(row["attention_mask"])
+    input_ids = pickle.dumps(row["input_ids"])
+    return pd.Series({
+        "token_id": row["sample_id"],
+        "attention_mask": attn_mask,
+        "input_ids": input_ids,
+        "token_count": row["token_count"],
+        "valid": row["valid"]
+    })

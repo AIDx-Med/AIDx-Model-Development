@@ -84,8 +84,8 @@ class BatchPaddedCollator(DataCollatorForLanguageModeling):
     def __call__(self, examples):
         batch = {"input_ids": [], "attention_mask": []}
         for example in examples:
-            batch["input_ids"].append(example["input_ids"][0])
-            batch["attention_mask"].append(example["attention_mask"][0])
+            batch["input_ids"].append(example["input_ids"])
+            batch["attention_mask"].append(example["attention_mask"])
         batch = self.tokenizer.pad(batch, return_tensors="pt", padding="longest")
 
         return batch

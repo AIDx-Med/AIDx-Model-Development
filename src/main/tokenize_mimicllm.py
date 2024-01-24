@@ -31,6 +31,16 @@ def main(args):
     ]
     print(f"Found {'{:,}'.format(len(sample_ids))} sample IDs to process")
 
+    total_tokens = 0
+
+    # token_query = text("""
+    #             SELECT SUM(token_count)
+    #             FROM mimicllm.tokenized_data
+    #     """)
+    # token_count = engine.execute(token_query).fetchall()
+    # if token_count[0][0] is not None:
+    #     total_tokens = token_count[0][0]
+
     # dispose of the engine to avoid memory leaks
     engine.dispose()
 
@@ -40,7 +50,7 @@ def main(args):
     num_cpus = ray.available_resources()["CPU"]
     print(f"Number of CPUs available to Ray: {num_cpus}")
 
-    print(f"Batch size: {batch_size}")
+    print(f"Batch size: {batch_size:,}")
 
     # organize sample_ids into batches
     batched_sample_ids = batch_strings(sample_ids, batch_size // num_cpus)
@@ -53,13 +63,16 @@ def main(args):
         for batch_ids in batched_sample_ids
     ]
 
+
     remaining_futures = set(futures)
     while remaining_futures:
         done_futures, remaining_futures = ray.wait(list(remaining_futures))
         for future in done_futures:
             try:
-                ray.get(future)
+                num_tokens = ray.get(future)
+                total_tokens += num_tokens
+                progress_actor.set_description.remote(f"Total tokens: {total_tokens:,}")
             except Exception as e:
-                progress_actor.write.remote(
+                print(
                     f"Error processing: {type(e).__name__} error with message: {e}"
                 )
