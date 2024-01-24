@@ -113,8 +113,8 @@ def main(args):
             optim="paged_adamw_8bit",
             output_dir="aidx-mixtral",
             load_best_model_at_end=True,
-            compute_metrics=compute_metrics,
         ),
+        compute_metrics=compute_metrics,
         data_collator=data_collator,
     )
 

@@ -18,3 +18,4 @@ bert_score
 deepspeed
 bitsandbytes
 pynvml
+numpy
