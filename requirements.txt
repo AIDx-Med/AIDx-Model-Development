@@ -19,3 +19,5 @@ deepspeed
 bitsandbytes
 pynvml
 numpy
+scipy
+wandb
