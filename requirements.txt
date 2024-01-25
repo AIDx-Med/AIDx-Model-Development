@@ -1,7 +1,7 @@
 notebook
 sqlalchemy
-psycopg2-binary
-python-dotenv
+psycopg2 - binary
+python - dotenv
 pandas
 tqdm
 datasets
@@ -9,7 +9,7 @@ transformers
 ray
 ipywidgets
 pyarrow
-scikit-learn
+scikit - learn
 torch
 peft
 accelerate

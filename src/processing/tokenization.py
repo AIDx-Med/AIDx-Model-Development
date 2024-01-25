@@ -86,6 +86,7 @@ def batch_strings(string_list, batch_size):
 
     return batches
 
+
 def get_all_sample_ids(engine):
     query = sql_text(
         """
@@ -97,13 +98,16 @@ def get_all_sample_ids(engine):
     df = pd.read_sql(query, engine)
     return df["sample_id"].tolist()
 
+
 def serialize_tokenized_row(row):
     attn_mask = pickle.dumps(row["attention_mask"])
     input_ids = pickle.dumps(row["input_ids"])
-    return pd.Series({
-        "token_id": row["sample_id"],
-        "attention_mask": attn_mask,
-        "input_ids": input_ids,
-        "token_count": row["token_count"],
-        "valid": row["valid"]
-    })
+    return pd.Series(
+        {
+            "token_id": row["sample_id"],
+            "attention_mask": attn_mask,
+            "input_ids": input_ids,
+            "token_count": row["token_count"],
+            "valid": row["valid"],
+        }
+    )

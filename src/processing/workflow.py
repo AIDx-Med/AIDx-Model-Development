@@ -17,7 +17,7 @@ from src.processing.tokenization import (
     extract_numeric_id,
     generate_prompt,
     tokenize,
-    serialize_tokenized_row
+    serialize_tokenized_row,
 )
 
 
@@ -172,13 +172,15 @@ def tokenize_batch(batch_ids, progress_actor=None):
             if numeric_id is not None:
                 last_skipped_id[base_id] = numeric_id
         else:
-            tokenized_prompts.append({
-                "sample_id": row["sample_id"],
-                "attention_mask": tokenized["attention_mask"][0],
-                "input_ids": tokenized["input_ids"][0],
-                "token_count": len(tokenized["input_ids"][0]),
-                "valid": len(tokenized["input_ids"][0]) < max_length
-            })
+            tokenized_prompts.append(
+                {
+                    "sample_id": row["sample_id"],
+                    "attention_mask": tokenized["attention_mask"][0],
+                    "input_ids": tokenized["input_ids"][0],
+                    "token_count": len(tokenized["input_ids"][0]),
+                    "valid": len(tokenized["input_ids"][0]) < max_length,
+                }
+            )
 
         if progress_actor is None:
             pbar.update(1)
@@ -192,10 +194,12 @@ def tokenize_batch(batch_ids, progress_actor=None):
     if "valid" in tokenized_dataframe.columns:
         tokenized_dataframe = tokenized_dataframe[tokenized_dataframe["valid"]]
 
-        serialized_tokens = tokenized_dataframe.apply(serialize_tokenized_row, axis=1).drop(columns=["valid"])
+        serialized_tokens = tokenized_dataframe.apply(
+            serialize_tokenized_row, axis=1
+        ).drop(columns=["valid"])
         upload_to_db(serialized_tokens, engine, table="tokenized_data")
 
-        num_tokens = tokenized_dataframe['token_count'].sum()
+        num_tokens = tokenized_dataframe["token_count"].sum()
 
     if progress_actor is None:
         pbar.close()

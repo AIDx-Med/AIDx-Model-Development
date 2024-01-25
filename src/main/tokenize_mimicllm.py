@@ -63,7 +63,6 @@ def main(args):
         for batch_ids in batched_sample_ids
     ]
 
-
     remaining_futures = set(futures)
     while remaining_futures:
         done_futures, remaining_futures = ray.wait(list(remaining_futures))
@@ -73,6 +72,4 @@ def main(args):
                 total_tokens += num_tokens
                 progress_actor.set_description.remote(f"Total tokens: {total_tokens:,}")
             except Exception as e:
-                print(
-                    f"Error processing: {type(e).__name__} error with message: {e}"
-                )
+                print(f"Error processing: {type(e).__name__} error with message: {e}")

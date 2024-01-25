@@ -10,7 +10,13 @@ from evaluate import load
 from peft import prepare_model_for_kbit_training, LoraConfig, get_peft_model
 from pynvml import nvmlInit, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
 from torch.distributed.fsdp import FullStateDictConfig, FullOptimStateDictConfig
-from transformers import AutoModelForCausalLM, Trainer, TrainingArguments, AutoTokenizer, BitsAndBytesConfig
+from transformers import (
+    AutoModelForCausalLM,
+    Trainer,
+    TrainingArguments,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+)
 
 from src.processing.utils import transform_dataset_to_tensor, BatchPaddedCollator
 
@@ -53,8 +59,12 @@ def eval_and_save_metrics(test_data, train_result, trainer):
     trainer.save_metrics("test", eval_result)
 
 
-def load_model_trainer(base_model_id, bnb_config, compute_bertscore, data_collator, train_data, val_data):
-    model = AutoModelForCausalLM.from_pretrained(base_model_id, quantization_config=bnb_config, device_map="cuda")
+def load_model_trainer(
+    base_model_id, bnb_config, compute_bertscore, data_collator, train_data, val_data
+):
+    model = AutoModelForCausalLM.from_pretrained(
+        base_model_id, quantization_config=bnb_config, device_map="cuda"
+    )
     model.gradient_checkpointing_enable()
     model = prepare_model_for_kbit_training(model)
     config = LoraConfig(
@@ -81,7 +91,13 @@ def load_model_trainer(base_model_id, bnb_config, compute_bertscore, data_collat
         model.model_parallel = True
     project = "aidx-finetune"
     base_model_name = "mixtral"
-    run_name = base_model_name + "-" + project + "-" + datetime.now().strftime("%Y-%m-%d-%H-%M")
+    run_name = (
+        base_model_name
+        + "-"
+        + project
+        + "-"
+        + datetime.now().strftime("%Y-%m-%d-%H-%M")
+    )
     output_dir = "./" + run_name
     trainer = Trainer(
         model=model,
@@ -106,21 +122,28 @@ def load_model_trainer(base_model_id, bnb_config, compute_bertscore, data_collat
             eval_steps=25,  # Evaluate and save checkpoints every 25 steps
             do_eval=True,  # Perform evaluation at the end of training
             report_to="wandb",  # Comment this out if you don't want to use weights & baises
-            run_name=f"{run_name}-{datetime.now().strftime('%Y-%m-%d-%H-%M')}"  # Name of the W&B run (optional)
+            run_name=f"{run_name}-{datetime.now().strftime('%Y-%m-%d-%H-%M')}",  # Name of the W&B run (optional)
         ),
         data_collator=data_collator,
         compute_metrics=compute_bertscore,
     )
-    model.config.use_cache = False  # silence the warnings. Please re-enable for inference!
+    model.config.use_cache = (
+        False  # silence the warnings. Please re-enable for inference!
+    )
     return trainer
 
 
 def load_bertscore():
     metric = load("bertscore")
+
     def compute_bertscore(eval_pred):
         logits, labels = eval_pred
         predictions = np.argmax(logits, axis=-1)
-        return metric.compute(predictions=predictions, references=labels, model_type='nfliu/scibert_basevocab_uncased')
+        return metric.compute(
+            predictions=predictions,
+            references=labels,
+            model_type="nfliu/scibert_basevocab_uncased",
+        )
 
     return compute_bertscore
 
@@ -144,10 +167,7 @@ def load_data(parquet_dir):
 
 
 def create_data_collator(base_model_id):
-    tokenizer = AutoTokenizer.from_pretrained(
-        base_model_id,
-        use_fast=True
-    )
+    tokenizer = AutoTokenizer.from_pretrained(base_model_id, use_fast=True)
     tokenizer.add_special_tokens({"pad_token": "[PAD]"})
     data_collator = BatchPaddedCollator(tokenizer, mlm=False)
     return data_collator
@@ -156,7 +176,9 @@ def create_data_collator(base_model_id):
 def setup_training_env():
     fsdp_plugin = FullyShardedDataParallelPlugin(
         state_dict_config=FullStateDictConfig(offload_to_cpu=True, rank0_only=False),
-        optim_state_dict_config=FullOptimStateDictConfig(offload_to_cpu=True, rank0_only=False),
+        optim_state_dict_config=FullOptimStateDictConfig(
+            offload_to_cpu=True, rank0_only=False
+        ),
     )
     Accelerator(fsdp_plugin=fsdp_plugin)
     wandb.login()
@@ -166,6 +188,6 @@ def setup_training_env():
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_use_double_quant=True,
-        bnb_4bit_compute_dtype=torch.bfloat16
+        bnb_4bit_compute_dtype=torch.bfloat16,
     )
     return bnb_config
