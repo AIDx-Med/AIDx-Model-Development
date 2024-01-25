@@ -44,8 +44,9 @@ def create_tokenized_data_model():
         __tablename__ = "tokenized_data"
         __table_args__ = {"schema": "mimicllm"}
 
-        token_id = Column(BigInteger, primary_key=True)
+        token_id = Column(Text, primary_key=True)
         attention_mask = Column(Text)
         input_ids = Column(Text)
+        token_count = Column(BigInteger)
 
     return TokenizedDataBase

@@ -25,51 +25,44 @@ def main(args):
     train_parquet_file = os.path.join(parquet_dir, "train.parquet")
     test_parquet_file = os.path.join(parquet_dir, "test.parquet")
 
-    last_id = 0
-
     # Initialize Parquet writers
     train_writer = None
     test_writer = None
 
-    with tqdm(total=total_rows, desc="Processing") as pbar:
-        while True:
-            # Query the database in chunks ordered by a unique column
-            query = (
-                session.query(tokenized_data_model)
-                .order_by(tokenized_data_model.token_id)
-                .filter(tokenized_data_model.token_id > last_id)
-                .limit(chunk_size)
+    for offset in tqdm(range(0, total_rows, chunk_size), desc="Processing"):
+        # Query the database in chunks ordered by a unique column
+        query = (
+            session.query(tokenized_data_model)
+            .order_by(tokenized_data_model.token_id)
+            .limit(chunk_size)
+            .offset(offset)
+        )
+        chunk = pd.read_sql(query.statement, session.bind)
+        chunk = chunk.drop(columns=["token_id", "token_count"])
+
+        if chunk.empty:
+            break
+
+        train_chunk, test_chunk = train_test_split(chunk, test_size=test_size)
+
+        # Convert DataFrame to PyArrow Table
+        train_table = pa.Table.from_pandas(train_chunk, preserve_index=False)
+        test_table = pa.Table.from_pandas(test_chunk, preserve_index=False)
+
+        # Write train chunk
+        if train_writer is None:
+            train_writer = pq.ParquetWriter(
+                train_parquet_file, train_table.schema, compression="snappy"
             )
-            chunk = pd.read_sql(query.statement, session.bind)
-            last_id = int(chunk["token_id"].iloc[-1])
-            chunk = chunk.drop(columns=["token_id"])
+        train_writer.write_table(train_table)
 
-            if chunk.empty:
-                break
+        # Write test chunk
+        if test_writer is None:
+            test_writer = pq.ParquetWriter(
+                test_parquet_file, test_table.schema, compression="snappy"
+            )
 
-            train_chunk, test_chunk = train_test_split(chunk, test_size=test_size)
-
-            # Convert DataFrame to PyArrow Table
-            train_table = pa.Table.from_pandas(train_chunk, preserve_index=False)
-            test_table = pa.Table.from_pandas(test_chunk, preserve_index=False)
-
-            # Write train chunk
-            if train_writer is None:
-                train_writer = pq.ParquetWriter(
-                    train_parquet_file, train_table.schema, compression="snappy"
-                )
-            train_writer.write_table(train_table)
-
-            # Write test chunk
-            if test_writer is None:
-                test_writer = pq.ParquetWriter(
-                    test_parquet_file, test_table.schema, compression="snappy"
-                )
-
-            test_writer.write_table(test_table)
-
-            # Update progress bar
-            pbar.update(len(chunk))
+        test_writer.write_table(test_table)
 
     # Close the Parquet writers
     if train_writer:
