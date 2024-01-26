@@ -19,6 +19,11 @@ AIDx Model Development is an innovative repository focused on developing AI-driv
 - **Scripts**: Python scripts for comprehensive processes including database interactions and data workflows 📜.
 - **Dependencies**: `requirements.txt` for easy installation of necessary packages 📌.
 
+## Other Requirements
+- Google Drive and `rclone` for dataset storage
+    - Make sure the `rclone.conf` file is in the `scripts/utils` directory
+- MIMIC-IV Database with PostgreSQL
+
 ## Getting Started 🚀
 1. Clone the repository.
 2. Set up the Docker environment, which hosts the Jupyter Notebook.
