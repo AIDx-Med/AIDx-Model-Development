@@ -48,7 +48,6 @@ def main(args):
         data_collator,
         train_data,
         val_data,
-        train_count,
         cpu_count//gpu_count,
         accelerator
     )

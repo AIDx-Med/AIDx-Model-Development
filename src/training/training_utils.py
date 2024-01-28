@@ -60,7 +60,7 @@ def eval_and_save_metrics(test_data, train_result, trainer):
 
 
 def load_model_trainer(
-    base_model_id, compute_bertscore, data_collator, train_data, val_data, train_count, cpu_count, accelerator
+    base_model_id, compute_bertscore, data_collator, train_data, val_data, cpu_count, accelerator
 ):
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -135,9 +135,9 @@ def load_model_trainer(
             logging_steps=1,  # When to start reporting loss
             logging_dir="./logs",  # Directory for storing logs
             save_strategy="steps",  # Save the model checkpoint every logging step
-            save_steps=25,  # Save checkpoints every 25 steps
+            save_steps=5,  # Save checkpoints every 25 steps
             evaluation_strategy="epoch ",  # Evaluate the model every logging step
-            do_eval=False,  # Don't evaluation at the end of training
+            do_eval=True,  # Don't evaluation during training
             report_to="wandb",  # Comment this out if you don't want to use weights & baises
             run_name=f"{run_name}-{datetime.now().strftime('%Y-%m-%d-%H-%M')}",  # Name of the W&B run (optional)
             load_best_model_at_end=True,
