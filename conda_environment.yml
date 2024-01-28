@@ -1,0 +1,49 @@
+name: aidx-model-development
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10.13
+  - anaconda
+  - pip
+  - jupyterlab
+  - pandas
+  - pyarrow
+  - scikit-learn
+  - numpy
+  - scipy
+  - ipywidgets
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=12.1
+  - pip:
+      - ray
+      - aiohttp >= 3.7
+      - aiohttp_cors
+      - colorful
+      - py-spy >= 0.2.0
+      - requests
+      - grpcio >= 1.42.0  # noqa:E501
+      - opencensus
+      - pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3
+      - prometheus_client >= 0.7.1
+      - smart_open
+      - virtualenv >=20.0.24, !=20.21.1
+      - sqlalchemy
+      - psycopg2-binary
+      - python-dotenv
+      - tqdm
+      - datasets
+      - transformers
+      - peft
+      - accelerate
+      - evaluate
+      - bert_score
+      - deepspeed
+      - bitsandbytes
+      - pynvml
+      - wandb
+      - flash-attn
