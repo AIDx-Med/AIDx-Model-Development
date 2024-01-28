@@ -95,6 +95,23 @@ def main():
         action='store_true',
         help='If set, will stream the data from the parquet files',
     )
+    fine_tune_model_parser.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="If set, will clear the cache",
+    )
+    fine_tune_model_parser.add_argument(
+        "--max-batch-size",
+        type=int,
+        default=16,
+        help="The maximum batch size to use for fine tuning",
+    )
+    fine_tune_model_parser.add_argument(
+        "--num-epochs",
+        type=int,
+        default=2,
+        help="The number of epochs to use for fine tuning",
+    )
     fine_tune_model_parser.set_defaults(func=fine_tune_model_main)
 
     args = parser.parse_args(args=None if sys.argv[1:] else ["--help"])

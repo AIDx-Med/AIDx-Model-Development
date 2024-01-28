@@ -20,6 +20,9 @@ def main(args):
     base_model_id = args.model_name
     parquet_dir = args.parquet_dir
     stream_data = args.stream_data
+    clear_cache = args.clear_cache
+    max_batch_size = args.max_batch_size
+    num_epochs = args.num_epochs
 
     # set up logging
     cpu_count = os.cpu_count()
@@ -34,7 +37,7 @@ def main(args):
     accelerator.print(f"Number of GPUs available: {gpu_count}")
 
     accelerator.print("Loading data...")
-    train_data, val_data, train_count, val_count = load_data(parquet_dir, stream=stream_data, cpu_count=cpu_count, accelerator=accelerator)
+    train_data, val_data, train_count, val_count = load_data(parquet_dir, stream=stream_data, cpu_count=cpu_count, accelerator=accelerator, clear_cache=clear_cache)
     accelerator.print("Done loading data...")
 
     accelerator.print("Loading compute_bertscore...")
@@ -48,6 +51,8 @@ def main(args):
         data_collator,
         train_data,
         val_data,
+        max_batch_size,
+        num_epochs,
         cpu_count//gpu_count,
         accelerator
     )
@@ -65,7 +70,7 @@ def main(args):
     accelerator.print("Done training model...")
 
     accelerator.print("Evaluating model...")
-    test_data = load_data(parquet_dir, stream=True, cpu_count=cpu_count//gpu_count, test_only=True, accelerator=accelerator)
+    test_data = load_data(parquet_dir, stream=True, cpu_count=cpu_count//gpu_count, test_only=True, accelerator=accelerator, clear_cache=clear_cache)
 
     eval_and_save_metrics(test_data, train_result, trainer)
 

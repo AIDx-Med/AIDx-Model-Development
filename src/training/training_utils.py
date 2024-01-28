@@ -60,7 +60,7 @@ def eval_and_save_metrics(test_data, train_result, trainer):
 
 
 def load_model_trainer(
-    base_model_id, compute_bertscore, data_collator, train_data, val_data, cpu_count, accelerator
+    base_model_id, compute_bertscore, data_collator, train_data, val_data, max_batch_size, num_epochs, cpu_count, accelerator
 ):
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -114,10 +114,10 @@ def load_model_trainer(
     )
     output_dir = "./" + run_name
 
-    batch_size = 16
+    batch_size = max_batch_size
     gradient_accumulation_steps = 2
-    num_epochs = 2
 
+    # Settings from axolotl
     trainer = Trainer(
         model=model,
         train_dataset=train_data,
@@ -132,16 +132,16 @@ def load_model_trainer(
             gradient_checkpointing=True,
             num_train_epochs=num_epochs,
             dataloader_num_workers=cpu_count,
-            learning_rate=0.0002,  # Want a small lr for finetuning
+            learning_rate=0.0002,
             lr_scheduler_type='cosine',
             bf16=True,
             optim="adamw_bnb_8bit",
-            logging_steps=1,  # When to start reporting loss
+            logging_steps=1,
             logging_dir="./logs",  # Directory for storing logs
-            save_strategy="steps",  # Save the model checkpoint every logging step
-            save_steps=5,  # Save checkpoints every 25 steps
-            evaluation_strategy="epoch",  # Evaluate the model every logging step
-            do_eval=True,  # Don't evaluation during training
+            save_strategy="steps",
+            save_steps=5,  # Save checkpoints every 5 steps
+            evaluation_strategy="epoch",
+            do_eval=True,
             report_to="wandb",  # Comment this out if you don't want to use weights & baises
             run_name=f"{run_name}-{datetime.now().strftime('%Y-%m-%d-%H-%M')}",  # Name of the W&B run (optional)
             gradient_checkpointing_kwargs={
