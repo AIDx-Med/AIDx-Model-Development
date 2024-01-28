@@ -10,18 +10,18 @@ from evaluate import load
 from peft import prepare_model_for_kbit_training, LoraConfig, get_peft_model
 from pynvml import nvmlInit, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
 from torch.distributed.fsdp import FullStateDictConfig, FullOptimStateDictConfig
+from tqdm.auto import tqdm
 from transformers import (
     AutoModelForCausalLM,
     Trainer,
     TrainingArguments,
     AutoTokenizer,
-    BitsAndBytesConfig,
+    BitsAndBytesConfig, DataCollatorForLanguageModeling,
 )
 
-from src.processing.utils import transform_dataset_to_tensor, BatchPaddedCollator
+from src.processing.utils import transform_dataset_from_pickle
 
-
-def print_trainable_parameters(model):
+def print_trainable_parameters(model, accelerator):
     """
     Prints the number of trainable parameters in the model.
     """
@@ -31,22 +31,22 @@ def print_trainable_parameters(model):
         all_param += param.numel()
         if param.requires_grad:
             trainable_params += param.numel()
-    print(
+    accelerator.print(
         f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param}"
     )
 
 
-def print_gpu_utilization():
+def print_gpu_utilization(accelerator):
     nvmlInit()
     handle = nvmlDeviceGetHandleByIndex(0)
     info = nvmlDeviceGetMemoryInfo(handle)
-    print(f"GPU memory occupied: {info.used//1024**2} MB.")
+    accelerator.print(f"GPU memory occupied: {info.used//1024**2} MB.")
 
 
-def print_summary(result):
-    print(f"Time: {result.metrics['train_runtime']:.2f}")
-    print(f"Samples/second: {result.metrics['train_samples_per_second']:.2f}")
-    print_gpu_utilization()
+def print_summary(result, accelerator):
+    accelerator.print(f"Time: {result.metrics['train_runtime']:.2f}")
+    accelerator.print(f"Samples/second: {result.metrics['train_samples_per_second']:.2f}")
+    print_gpu_utilization(accelerator)
 
 
 def eval_and_save_metrics(test_data, train_result, trainer):
@@ -60,32 +60,43 @@ def eval_and_save_metrics(test_data, train_result, trainer):
 
 
 def load_model_trainer(
-    base_model_id, bnb_config, compute_bertscore, data_collator, train_data, val_data
+    base_model_id, compute_bertscore, data_collator, train_data, val_data, train_count, cpu_count, accelerator
 ):
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+    )
+
+    accelerator.print("Loading model...")
     model = AutoModelForCausalLM.from_pretrained(
-        base_model_id, quantization_config=bnb_config, device_map="cuda"
+        base_model_id, quantization_config=bnb_config, torch_dtype=torch.float16, attn_implementation="flash_attention_2"
     )
     model.gradient_checkpointing_enable()
+    accelerator.print("Done loading model...")
+
+    accelerator.print("Preparing model for kbit training...")
     model = prepare_model_for_kbit_training(model)
-    config = LoraConfig(
-        r=32,
-        lora_alpha=64,
+
+    lora_config = LoraConfig(
+        r=16,
+        lora_alpha=32,
         target_modules=[
             "q_proj",
             "k_proj",
             "v_proj",
             "o_proj",
-            "w1",
-            "w2",
-            "w3",
-            "lm_head",
         ],
         bias="none",
         lora_dropout=0.05,  # Conventional
         task_type="CAUSAL_LM",
     )
-    model = get_peft_model(model, config)
-    print_trainable_parameters(model)
+
+    accelerator.print("Loading LORA...")
+    model = get_peft_model(model, lora_config)
+
+    print_trainable_parameters(model, accelerator)
     if torch.cuda.device_count() > 1:  # If more than 1 GPU
         model.is_parallelizable = True
         model.model_parallel = True
@@ -99,6 +110,16 @@ def load_model_trainer(
         + datetime.now().strftime("%Y-%m-%d-%H-%M")
     )
     output_dir = "./" + run_name
+
+    batch_size = 8
+    num_devices = torch.cuda.device_count()
+    gradient_accumulation_steps = 4
+    num_epochs = 2
+
+    effective_batch_size = batch_size * num_devices * gradient_accumulation_steps
+    num_train_steps = (train_count * num_epochs) // effective_batch_size
+
+    accelerator.print(f"Number of training steps: {num_train_steps:,}")
     trainer = Trainer(
         model=model,
         train_dataset=train_data,
@@ -106,23 +127,28 @@ def load_model_trainer(
         args=TrainingArguments(
             output_dir=output_dir,
             warmup_steps=1,
-            per_device_train_batch_size=8,
+            per_device_train_batch_size=16,
+            per_device_eval_batch_size=16,
             auto_find_batch_size=True,
-            gradient_accumulation_steps=1,
+            gradient_accumulation_steps=gradient_accumulation_steps,
             gradient_checkpointing=True,
-            num_train_epochs=3,
+            max_steps=num_train_steps,
+            dataloader_num_workers=cpu_count,
             learning_rate=2.5e-5,  # Want a small lr for finetuning
-            fp16=True,
+            bf16=True,
             optim="paged_adamw_8bit",
             logging_steps=1,  # When to start reporting loss
             logging_dir="./logs",  # Directory for storing logs
             save_strategy="steps",  # Save the model checkpoint every logging step
             save_steps=25,  # Save checkpoints every 25 steps
-            evaluation_strategy="steps",  # Evaluate the model every logging step
-            eval_steps=25,  # Evaluate and save checkpoints every 25 steps
-            do_eval=True,  # Perform evaluation at the end of training
+            evaluation_strategy="epoch ",  # Evaluate the model every logging step
+            do_eval=False,  # Don't evaluation at the end of training
             report_to="wandb",  # Comment this out if you don't want to use weights & baises
             run_name=f"{run_name}-{datetime.now().strftime('%Y-%m-%d-%H-%M')}",  # Name of the W&B run (optional)
+            load_best_model_at_end=True,
+            gradient_checkpointing_kwargs={
+                'use_reentrant': False
+            }
         ),
         data_collator=data_collator,
         compute_metrics=compute_bertscore,
@@ -148,28 +174,92 @@ def load_bertscore():
     return compute_bertscore
 
 
-def load_data(parquet_dir):
+def load_data(parquet_dir, stream=True, val_size=0.1, cpu_count=1, test_only=False, clear_cache=False, accelerator=None):
     train_parquet_file = os.path.join(parquet_dir, "train.parquet")
     test_parquet_file = os.path.join(parquet_dir, "test.parquet")
-    initial_dataset = load_dataset(
-        "parquet", data_files=train_parquet_file, streaming=True, split="train"
-    )
-    dataset = initial_dataset.map(transform_dataset_to_tensor, batched=True)
-    test_dataset = load_dataset(
-        "parquet", data_files=test_parquet_file, streaming=True, split="test"
-    )
-    test_dataset = test_dataset.map(transform_dataset_to_tensor, batched=True)
-    train_data = dataset["train"]
-    # split training data into training and validation
-    train_data, val_data = train_data.train_test_split(test_size=0.1)
-    test_data = test_dataset["test"]
-    return test_data, train_data, val_data
+
+    if stream:
+        cpu_count = 1 # multiprocessing is not supported with streaming datasets
+
+    if not test_only:
+        init_train_dataset = load_dataset(
+            "parquet", data_files=train_parquet_file, streaming=stream, split="train"
+        )
+
+        if clear_cache:
+            init_train_dataset.cleanup_cache_files()
+
+        with accelerator.main_process_first():
+            train_dataset = init_train_dataset.map(transform_dataset_from_pickle, batched=True, batch_size=1_000,
+                                                   num_proc=cpu_count)
+
+        if clear_cache:
+            train_dataset.cleanup_cache_files()
+    else:
+        init_test_dataset = load_dataset(
+            "parquet", data_files=test_parquet_file, streaming=stream, split="train"
+        )
+
+        if clear_cache:
+            init_test_dataset.cleanup_cache_files()
+
+        with accelerator.main_process_first():
+            test_data = init_test_dataset.map(transform_dataset_from_pickle, batched=True, batch_size=1_000,
+                                              num_proc=cpu_count)
+
+        if clear_cache:
+            test_data.cleanup_cache_files()
+
+        return test_data
+
+    if stream:
+        accelerator.print("Getting dataset lengths...")
+        len_train = 0
+
+        if accelerator.is_main_process:
+            with tqdm(desc="Count") as pbar:
+                for _ in train_dataset:
+                    pbar.update(1)
+                    len_train += 1
+
+            len_train_tensor = torch.tensor(len_train)
+        else:
+            len_train_tensor = torch.tensor(0)
+
+        accelerator.broadcast(len_train_tensor, src=0)
+
+        len_train = len_train_tensor.item()
+
+        accelerator.print(f"Original data size: {len_train:,} rows")
+
+        accelerator.print("Shuffling training data...")
+        shuffled_train_dataset = train_dataset.shuffle(buffer_size=10_000)
+
+        accelerator.print("Splitting training data...")
+
+        val_count = int(len_train * val_size)
+        train_count = len_train - val_count
+
+        accelerator.print(f"Training data size: {train_count:,} rows")
+        accelerator.print(f"Validation data size: {val_count:,} rows")
+
+        # split training data into training and validation
+        train_data = shuffled_train_dataset.skip(val_count)
+        val_data = shuffled_train_dataset.take(val_count)
+    else:
+        training_dataset = train_dataset.train_test_split(test_size=val_size)
+        train_data = training_dataset["train"]
+        val_data = training_dataset["test"]
+        train_count = len(train_data)
+        val_count = len(val_data)
+
+    return train_data, val_data, train_count, val_count
 
 
 def create_data_collator(base_model_id):
     tokenizer = AutoTokenizer.from_pretrained(base_model_id, use_fast=True)
-    tokenizer.add_special_tokens({"pad_token": "[PAD]"})
-    data_collator = BatchPaddedCollator(tokenizer, mlm=False)
+    tokenizer.pad_token = tokenizer.eos_token
+    data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
     return data_collator
 
 
@@ -180,14 +270,11 @@ def setup_training_env():
             offload_to_cpu=True, rank0_only=False
         ),
     )
-    Accelerator(fsdp_plugin=fsdp_plugin)
+    accelerator = Accelerator(fsdp_plugin=fsdp_plugin)
+    # accelerator = Accelerator()
     wandb.login()
     wandb_project = "aidx-finetune"
     if len(wandb_project) > 0:
         os.environ["WANDB_PROJECT"] = wandb_project
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_compute_dtype=torch.bfloat16,
-    )
-    return bnb_config
+
+    return accelerator

@@ -7,16 +7,18 @@ services:
       dockerfile: Dockerfile.jammy
     image: lambda-stack:22.04
   aidx-jupyter:
-    build:
-      context: .
-      dockerfile: Dockerfile
     depends_on:
       - lambda-stack
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile
+    image: tslaroadster/aidx-model-development:latest
     network_mode: "host"
-    restart: always
+    restart: on-failure
     volumes:
-      - /home/alan/workspace:/workspace
-    command: "jupyter notebook --allow-root --no-browser --ip=0.0.0.0 --port=8888 --NotebookApp.token='' --NotebookApp.password=''"
+      - ~/workspace:/workspace-host
+    working_dir: "/workspace"
+    command: "docker/run-jupyter.sh"
     deploy:
       resources:
         reservations:

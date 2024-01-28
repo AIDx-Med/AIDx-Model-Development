@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 
 # setup rclone
-LOCAL_RCLONE_CONFIG="$(dirname "$0")/rclone.conf"
+LOCAL_RCLONE_CONFIG=$(realpath "$(dirname "$0")/rclone.conf")
 TARGET_RCLONE_CONFIG="$HOME/.config/rclone/rclone.conf"
+
+echo "Local rclone config: $LOCAL_RCLONE_CONFIG"
+echo "Target rclone config: $TARGET_RCLONE_CONFIG"
 
 # check if rclone is installed
 if ! command -v rclone &> /dev/null
@@ -13,13 +16,6 @@ fi
 
 # check if rclone config file is in the same directory as the script regardless of where the script is called from
 if [ ! -f "$LOCAL_RCLONE_CONFIG" ]; then
-    # check to see if it's a github secret
-    SECRET=$(gh secret view RCLONE_CONFIG)
-    if [ $? -eq 0 ]; then
-        echo "rclone.conf found in github secrets, writing to local file..."
-        echo "$SECRET" > "$LOCAL_RCLONE_CONFIG"
-    fi
-
     echo "local rclone.conf not found, please place it in the same directory as the script"
     exit
 fi

@@ -5,7 +5,7 @@ import pandas as pd
 
 
 def tokenize(text, tokenizer):
-    return tokenizer(text, return_tensors="pt")
+    return tokenizer(text)
 
 
 def generate_prompt(system, input_text, output_text, separate=False):

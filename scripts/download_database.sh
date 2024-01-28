@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # configure rclone
-source "$(dirname "$0")/utils/config_rclone"
+"$(dirname "$0")/utils/config_rclone.sh"
 
 # query user for directory to download to
 echo "Enter directory to download to: "

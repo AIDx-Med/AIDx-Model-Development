@@ -175,8 +175,8 @@ def tokenize_batch(batch_ids, progress_actor=None):
             tokenized_prompts.append(
                 {
                     "sample_id": row["sample_id"],
-                    "attention_mask": tokenized["attention_mask"][0],
-                    "input_ids": tokenized["input_ids"][0],
+                    "attention_mask": tokenized["attention_mask"],
+                    "input_ids": tokenized["input_ids"],
                     "token_count": len(tokenized["input_ids"][0]),
                     "valid": len(tokenized["input_ids"][0]) < max_length,
                 }

@@ -1,8 +1,6 @@
 import pickle
 
 import pandas as pd
-from transformers import DataCollatorForLanguageModeling
-
 
 def reorder_columns(df, columns):
     return df[[column for column in columns if column in df.columns]]
@@ -66,26 +64,17 @@ def to_clean_records(dataframe):
     return dataframe.apply(lambda row: row.dropna().to_dict(), axis=1).tolist()
 
 
-def pickle_to_tensor(x):
+def unpickle_binary_string(x):
     deserialized = pickle.loads(bytes.fromhex(x.replace("\\x", "")))
     return deserialized
 
 
-def transform_dataset_to_tensor(examples):
+def transform_dataset_from_pickle(examples):
     examples["attention_mask"] = [
-        pickle_to_tensor(x) for x in examples["attention_mask"]
+        unpickle_binary_string(x) for x in examples["attention_mask"]
     ]
-    examples["input_ids"] = [pickle_to_tensor(x) for x in examples["input_ids"]]
+    examples["input_ids"] = [
+        unpickle_binary_string(x) for x in examples["input_ids"]
+    ]
 
     return examples
-
-
-class BatchPaddedCollator(DataCollatorForLanguageModeling):
-    def __call__(self, examples):
-        batch = {"input_ids": [], "attention_mask": []}
-        for example in examples:
-            batch["input_ids"].append(example["input_ids"])
-            batch["attention_mask"].append(example["attention_mask"])
-        batch = self.tokenizer.pad(batch, return_tensors="pt", padding="longest")
-
-        return batch

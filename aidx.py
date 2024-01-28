@@ -88,7 +88,12 @@ def main():
         "--parquet-dir",
         type=str,
         default="data/parquet",
-        help="The directory to store the Parquet files",
+        help="The directory with your parquet files",
+    )
+    fine_tune_model_parser.add_argument(
+        '--stream-data',
+        action='store_true',
+        help='If set, will stream the data from the parquet files',
     )
     fine_tune_model_parser.set_defaults(func=fine_tune_model_main)
 

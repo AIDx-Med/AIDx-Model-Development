@@ -2,7 +2,7 @@
 
 # This script dumps the database and uploads it to google drive
 
-source "$(dirname "$0")/utils/config_rclone"
+"$(dirname "$0")/utils/config_rclone.sh"
 
 # query user for chunk size, test size, and parquet directory
 echo "Enter chunk size (amount of rows to process at a time): "
