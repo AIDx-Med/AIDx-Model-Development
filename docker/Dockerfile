@@ -1,4 +1,4 @@
-# Use lambda-stack as base image
+# Use cuda as base image
 FROM nvidia/cuda:12.2.0-devel-ubuntu22.04
 
 # Set the working directory in the container
