@@ -71,7 +71,7 @@ def load_model_trainer(
 
     accelerator.print("Loading model...")
     model = AutoModelForCausalLM.from_pretrained(
-        base_model_id, quantization_config=bnb_config, torch_dtype=torch.float16, attn_implementation="flash_attention_2"
+        base_model_id, quantization_config=bnb_config, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2"
     )
     model.gradient_checkpointing_enable()
     accelerator.print("Done loading model...")

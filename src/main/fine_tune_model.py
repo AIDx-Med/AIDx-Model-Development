@@ -1,5 +1,6 @@
 import os
 import torch
+import transformers
 
 from src.training.training_utils import (
     print_summary,
@@ -14,6 +15,8 @@ from src.training.training_utils import (
 
 
 def main(args):
+    transformers.logging.set_verbosity_debug()
+
     base_model_id = args.model_name
     parquet_dir = args.parquet_dir
     stream_data = args.stream_data
