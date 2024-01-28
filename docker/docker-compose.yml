@@ -1,14 +1,7 @@
 version: '3.8'
 
 services:
-  lambda-stack:
-    build:
-      context: https://github.com/lambdal/lambda-stack-dockerfiles.git
-      dockerfile: Dockerfile.jammy
-    image: lambda-stack:22.04
   aidx-jupyter:
-    depends_on:
-      - lambda-stack
     build:
       context: ../
       dockerfile: docker/Dockerfile

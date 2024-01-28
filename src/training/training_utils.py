@@ -111,8 +111,8 @@ def load_model_trainer(
     )
     output_dir = "./" + run_name
 
-    batch_size = 8
-    gradient_accumulation_steps = 4
+    batch_size = 16
+    gradient_accumulation_steps = 32
     num_epochs = 2
 
     trainer = Trainer(
