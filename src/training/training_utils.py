@@ -71,7 +71,7 @@ def load_model_trainer(
 
     accelerator.print("Loading model...")
     model = AutoModelForCausalLM.from_pretrained(
-        base_model_id, quantization_config=bnb_config, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2"
+        base_model_id, quantization_config=bnb_config, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2", trust_remote_code=True
     )
     model.gradient_checkpointing_enable()
     accelerator.print("Done loading model...")
@@ -112,14 +112,9 @@ def load_model_trainer(
     output_dir = "./" + run_name
 
     batch_size = 8
-    num_devices = torch.cuda.device_count()
     gradient_accumulation_steps = 4
     num_epochs = 2
 
-    effective_batch_size = batch_size * num_devices * gradient_accumulation_steps
-    num_train_steps = (train_count * num_epochs) // effective_batch_size
-
-    accelerator.print(f"Number of training steps: {num_train_steps:,}")
     trainer = Trainer(
         model=model,
         train_dataset=train_data,
@@ -127,12 +122,12 @@ def load_model_trainer(
         args=TrainingArguments(
             output_dir=output_dir,
             warmup_steps=1,
-            per_device_train_batch_size=16,
-            per_device_eval_batch_size=16,
+            per_device_train_batch_size=batch_size,
+            per_device_eval_batch_size=batch_size,
             auto_find_batch_size=True,
             gradient_accumulation_steps=gradient_accumulation_steps,
             gradient_checkpointing=True,
-            max_steps=num_train_steps,
+            num_epochs=num_epochs,
             dataloader_num_workers=cpu_count,
             learning_rate=2.5e-5,  # Want a small lr for finetuning
             bf16=True,
