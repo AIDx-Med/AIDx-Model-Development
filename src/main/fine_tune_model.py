@@ -15,7 +15,7 @@ from src.training.training_utils import (
 
 
 def main(args):
-    transformers.logging.set_verbosity_debug()
+    transformers.logging.set_verbosity_info()
 
     base_model_id = args.model_name
     parquet_dir = args.parquet_dir
@@ -56,6 +56,8 @@ def main(args):
 
     accelerator.print("Training model...")
     train_result = trainer.train()
+
+    trainer._load_best_model()
 
     # save the best model adapter as safetensors
     trainer.save_model("aidx-mixtral")

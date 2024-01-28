@@ -71,7 +71,7 @@ def load_model_trainer(
 
     accelerator.print("Loading model...")
     model = AutoModelForCausalLM.from_pretrained(
-        base_model_id, quantization_config=bnb_config, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2", trust_remote_code=True
+        base_model_id, quantization_config=bnb_config, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2", trust_remote_code=True,
     )
     model.gradient_checkpointing_enable()
     accelerator.print("Done loading model...")
@@ -80,16 +80,19 @@ def load_model_trainer(
     model = prepare_model_for_kbit_training(model)
 
     lora_config = LoraConfig(
-        r=16,
-        lora_alpha=32,
+        r=32,
+        lora_alpha=16,
         target_modules=[
+            "gate",
             "q_proj",
             "k_proj",
             "v_proj",
             "o_proj",
+            "w1",
+            "w2",
+            "w3",
         ],
-        bias="none",
-        lora_dropout=0.05,  # Conventional
+        lora_dropout=0.05,
         task_type="CAUSAL_LM",
     )
 
@@ -112,7 +115,7 @@ def load_model_trainer(
     output_dir = "./" + run_name
 
     batch_size = 16
-    gradient_accumulation_steps = 32
+    gradient_accumulation_steps = 2
     num_epochs = 2
 
     trainer = Trainer(
@@ -121,29 +124,29 @@ def load_model_trainer(
         eval_dataset=val_data,
         args=TrainingArguments(
             output_dir=output_dir,
-            warmup_steps=1,
+            warmup_steps=10,
             per_device_train_batch_size=batch_size,
             per_device_eval_batch_size=batch_size,
             auto_find_batch_size=True,
             gradient_accumulation_steps=gradient_accumulation_steps,
             gradient_checkpointing=True,
-            num_epochs=num_epochs,
+            num_train_epochs=num_epochs,
             dataloader_num_workers=cpu_count,
-            learning_rate=2.5e-5,  # Want a small lr for finetuning
+            learning_rate=0.0002,  # Want a small lr for finetuning
+            lr_scheduler_type='cosine',
             bf16=True,
-            optim="paged_adamw_8bit",
+            optim="adamw_bnb_8bit",
             logging_steps=1,  # When to start reporting loss
             logging_dir="./logs",  # Directory for storing logs
             save_strategy="steps",  # Save the model checkpoint every logging step
             save_steps=5,  # Save checkpoints every 25 steps
-            evaluation_strategy="epoch ",  # Evaluate the model every logging step
+            evaluation_strategy="epoch",  # Evaluate the model every logging step
             do_eval=True,  # Don't evaluation during training
             report_to="wandb",  # Comment this out if you don't want to use weights & baises
             run_name=f"{run_name}-{datetime.now().strftime('%Y-%m-%d-%H-%M')}",  # Name of the W&B run (optional)
-            load_best_model_at_end=True,
             gradient_checkpointing_kwargs={
                 'use_reentrant': False
-            }
+            },
         ),
         data_collator=data_collator,
         compute_metrics=compute_bertscore,
