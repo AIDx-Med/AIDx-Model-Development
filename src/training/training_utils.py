@@ -182,22 +182,24 @@ def load_data(parquet_dir, stream=True, val_size=0.1, cpu_count=1, test_only=Fal
         cpu_count = 1 # multiprocessing is not supported with streaming datasets
 
     if not test_only:
-        init_train_dataset = load_dataset(
-            "parquet", data_files=train_parquet_file, streaming=stream, split="train"
-        )
+        with accelerator.main_process_first():
+            init_train_dataset = load_dataset(
+                "parquet", data_files=train_parquet_file, streaming=stream, split="train"
+            )
 
-        train_dataset = init_train_dataset.map(transform_dataset_from_pickle, batched=True, batch_size=1_000,
-                                               num_proc=cpu_count)
+            train_dataset = init_train_dataset.map(transform_dataset_from_pickle, batched=True, batch_size=1_000,
+                                                   num_proc=cpu_count)
 
         if clear_cache:
             train_dataset.cleanup_cache_files()
     else:
-        init_test_dataset = load_dataset(
-            "parquet", data_files=test_parquet_file, streaming=stream, split="train"
-        )
+        with accelerator.main_process_first():
+            init_test_dataset = load_dataset(
+                "parquet", data_files=test_parquet_file, streaming=stream, split="train"
+            )
 
-        test_data = init_test_dataset.map(transform_dataset_from_pickle, batched=True, batch_size=1_000,
-                                          num_proc=cpu_count)
+            test_data = init_test_dataset.map(transform_dataset_from_pickle, batched=True, batch_size=1_000,
+                                              num_proc=cpu_count)
 
         if clear_cache:
             test_data.cleanup_cache_files()
