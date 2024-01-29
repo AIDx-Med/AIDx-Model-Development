@@ -11,7 +11,6 @@ fi
 
 apt-get update
 apt-get install unzip wget nvtop -y
-pip install py3nvml
 
 # github cli
 
