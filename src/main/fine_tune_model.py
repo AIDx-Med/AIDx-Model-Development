@@ -14,19 +14,28 @@ from src.training.training_utils import (
 )
 
 
-def main(args):
-    base_model_id = args.model_name
-    parquet_dir = args.parquet_dir
-    stream_data = args.stream_data
-    clear_cache = args.clear_cache
-    max_batch_size = args.max_batch_size
-    num_epochs = args.num_epochs
+def main(args=None):
+    if not args:
+        base_model_id = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+        parquet_dir = "data/parquet"
+        stream_data = False
+        clear_cache = False
+        max_batch_size = 1
+        num_epochs = 2
+    elif args:
+        base_model_id = args.model_name or "mistralai/Mixtral-8x7B-Instruct-v0.1"
+        parquet_dir = args.parquet_dir or "data/parquet"
+        stream_data = args.stream_data or False
+        clear_cache = args.clear_cache or False
+        max_batch_size = args.max_batch_size or 1
+        num_epochs = args.num_epochs or 2
 
     # set up logging
     cpu_count = os.cpu_count()
     gpu_count = torch.cuda.device_count()
 
     print("Setting up training environment...")
+    torch.set_num_threads(cpu_count//gpu_count)
     accelerator = setup_training_env()
     data_collator = create_data_collator(base_model_id)
     accelerator.print("Done setting up training environment...")
@@ -78,3 +87,6 @@ def main(args):
     eval_and_save_metrics(test_data, train_result, trainer)
 
     print_summary(train_result, accelerator)
+
+if __name__ == "__main__":
+    main()

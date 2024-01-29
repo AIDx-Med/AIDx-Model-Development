@@ -87,7 +87,7 @@ def main():
     fine_tune_model_parser.add_argument(
         "--parquet-dir",
         type=str,
-        default="data/parquet",
+        default="data/mimicllm",
         help="The directory with your parquet files",
     )
     fine_tune_model_parser.add_argument(

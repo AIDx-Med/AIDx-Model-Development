@@ -62,6 +62,49 @@ def eval_and_save_metrics(test_data, train_result, trainer):
 def load_model_trainer(
     base_model_id, compute_bertscore, data_collator, train_data, val_data, max_batch_size, num_epochs, cpu_count, accelerator
 ):
+    accelerator.print("Loading model...")
+
+    project = "aidx-finetune"
+    base_model_name = "mixtral"
+    run_name = (
+            base_model_name
+            + "-"
+            + project
+            + "-"
+            + datetime.now().strftime("%Y-%m-%d-%H-%M")
+    )
+    output_dir = "./" + run_name
+
+    batch_size = max_batch_size
+    gradient_accumulation_steps = 2
+
+    training_args = TrainingArguments(
+        output_dir=output_dir,
+        warmup_steps=10,
+        per_device_train_batch_size=batch_size,
+        per_device_eval_batch_size=batch_size,
+        gradient_accumulation_steps=gradient_accumulation_steps,
+        gradient_checkpointing=True,
+        num_train_epochs=num_epochs,
+        dataloader_num_workers=cpu_count,
+        learning_rate=0.0002,
+        # lr_scheduler_type='cosine',
+        bf16=True,
+        # optim="adamw_bnb_8bit",
+        logging_steps=1,
+        logging_dir="./logs",  # Directory for storing logs
+        save_strategy="steps",
+        save_steps=5,  # Save checkpoints every 5 steps
+        evaluation_strategy="epoch",
+        do_eval=True,
+        report_to="wandb",  # Comment this out if you don't want to use weights & baises
+        run_name=f"{run_name}-{datetime.now().strftime('%Y-%m-%d-%H-%M')}",  # Name of the W&B run (optional)
+        gradient_checkpointing_kwargs={
+            'use_reentrant': False
+        },
+        deepspeed="/workspace/zero3.json"
+    )
+
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_use_double_quant=True,
@@ -69,7 +112,6 @@ def load_model_trainer(
         bnb_4bit_compute_dtype=torch.bfloat16,
     )
 
-    accelerator.print("Loading model...")
     model = AutoModelForCausalLM.from_pretrained(
         base_model_id, quantization_config=bnb_config, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2", trust_remote_code=True,
     )
@@ -100,54 +142,14 @@ def load_model_trainer(
     model = get_peft_model(model, lora_config)
 
     print_trainable_parameters(model, accelerator)
-    if torch.cuda.device_count() > 1:  # If more than 1 GPU
-        model.is_parallelizable = True
-        model.model_parallel = True
-    project = "aidx-finetune"
-    base_model_name = "mixtral"
-    run_name = (
-        base_model_name
-        + "-"
-        + project
-        + "-"
-        + datetime.now().strftime("%Y-%m-%d-%H-%M")
-    )
-    output_dir = "./" + run_name
 
-    batch_size = max_batch_size
-    gradient_accumulation_steps = 2
 
     # Settings from axolotl
     trainer = Trainer(
         model=model,
         train_dataset=train_data,
         eval_dataset=val_data,
-        args=TrainingArguments(
-            output_dir=output_dir,
-            warmup_steps=10,
-            per_device_train_batch_size=batch_size,
-            per_device_eval_batch_size=batch_size,
-            auto_find_batch_size=True,
-            gradient_accumulation_steps=gradient_accumulation_steps,
-            gradient_checkpointing=True,
-            num_train_epochs=num_epochs,
-            dataloader_num_workers=cpu_count,
-            learning_rate=0.0002,
-            lr_scheduler_type='cosine',
-            bf16=True,
-            optim="adamw_bnb_8bit",
-            logging_steps=1,
-            logging_dir="./logs",  # Directory for storing logs
-            save_strategy="steps",
-            save_steps=5,  # Save checkpoints every 5 steps
-            evaluation_strategy="epoch",
-            do_eval=True,
-            report_to="wandb",  # Comment this out if you don't want to use weights & baises
-            run_name=f"{run_name}-{datetime.now().strftime('%Y-%m-%d-%H-%M')}",  # Name of the W&B run (optional)
-            gradient_checkpointing_kwargs={
-                'use_reentrant': False
-            },
-        ),
+        args=training_args,
         data_collator=data_collator,
         compute_metrics=compute_bertscore,
     )
@@ -184,9 +186,8 @@ def load_data(parquet_dir, stream=True, val_size=0.1, cpu_count=1, test_only=Fal
             "parquet", data_files=train_parquet_file, streaming=stream, split="train"
         )
 
-        with accelerator.main_process_first():
-            train_dataset = init_train_dataset.map(transform_dataset_from_pickle, batched=True, batch_size=1_000,
-                                                   num_proc=cpu_count)
+        train_dataset = init_train_dataset.map(transform_dataset_from_pickle, batched=True, batch_size=1_000,
+                                               num_proc=cpu_count)
 
         if clear_cache:
             train_dataset.cleanup_cache_files()
@@ -195,9 +196,8 @@ def load_data(parquet_dir, stream=True, val_size=0.1, cpu_count=1, test_only=Fal
             "parquet", data_files=test_parquet_file, streaming=stream, split="train"
         )
 
-        with accelerator.main_process_first():
-            test_data = init_test_dataset.map(transform_dataset_from_pickle, batched=True, batch_size=1_000,
-                                              num_proc=cpu_count)
+        test_data = init_test_dataset.map(transform_dataset_from_pickle, batched=True, batch_size=1_000,
+                                          num_proc=cpu_count)
 
         if clear_cache:
             test_data.cleanup_cache_files()
