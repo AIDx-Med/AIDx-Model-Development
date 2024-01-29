@@ -15,8 +15,6 @@ from src.training.training_utils import (
 
 
 def main(args):
-    transformers.logging.set_verbosity_info()
-
     base_model_id = args.model_name
     parquet_dir = args.parquet_dir
     stream_data = args.stream_data
@@ -32,6 +30,11 @@ def main(args):
     accelerator = setup_training_env()
     data_collator = create_data_collator(base_model_id)
     accelerator.print("Done setting up training environment...")
+
+    if accelerator.is_main_process:
+        transformers.logging.set_verbosity_info()
+    else:
+        transformers.logging.set_verbosity_error()
 
     accelerator.print(f"Number of CPUs available: {cpu_count}")
     accelerator.print(f"Number of GPUs available: {gpu_count}")
