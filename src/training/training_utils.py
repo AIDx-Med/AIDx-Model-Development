@@ -184,9 +184,6 @@ def load_data(parquet_dir, stream=True, val_size=0.1, cpu_count=1, test_only=Fal
             "parquet", data_files=train_parquet_file, streaming=stream, split="train"
         )
 
-        if clear_cache:
-            init_train_dataset.cleanup_cache_files()
-
         with accelerator.main_process_first():
             train_dataset = init_train_dataset.map(transform_dataset_from_pickle, batched=True, batch_size=1_000,
                                                    num_proc=cpu_count)
@@ -197,9 +194,6 @@ def load_data(parquet_dir, stream=True, val_size=0.1, cpu_count=1, test_only=Fal
         init_test_dataset = load_dataset(
             "parquet", data_files=test_parquet_file, streaming=stream, split="train"
         )
-
-        if clear_cache:
-            init_test_dataset.cleanup_cache_files()
 
         with accelerator.main_process_first():
             test_data = init_test_dataset.map(transform_dataset_from_pickle, batched=True, batch_size=1_000,
