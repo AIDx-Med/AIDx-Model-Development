@@ -112,10 +112,14 @@ def load_model_trainer(
         bnb_4bit_compute_dtype=torch.bfloat16,
     )
 
-    model = AutoModelForCausalLM.from_pretrained(
-        base_model_id, quantization_config=bnb_config, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2", trust_remote_code=True,
-    )
+    with accelerator.main_process_first():
+        model = AutoModelForCausalLM.from_pretrained(
+            base_model_id, quantization_config=bnb_config, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2", trust_remote_code=True,
+        )
+
     model.gradient_checkpointing_enable()
+    accelerator.wait_for_everyone()
+
     accelerator.print("Done loading model...")
 
     accelerator.print("Preparing model for kbit training...")
@@ -190,6 +194,8 @@ def load_data(parquet_dir, stream=True, val_size=0.1, cpu_count=1, test_only=Fal
             train_dataset = init_train_dataset.map(transform_dataset_from_pickle, batched=True, batch_size=1_000,
                                                    num_proc=cpu_count)
 
+        accelerator.wait_for_everyone()
+
         if clear_cache:
             train_dataset.cleanup_cache_files()
     else:
@@ -200,6 +206,8 @@ def load_data(parquet_dir, stream=True, val_size=0.1, cpu_count=1, test_only=Fal
 
             test_data = init_test_dataset.map(transform_dataset_from_pickle, batched=True, batch_size=1_000,
                                               num_proc=cpu_count)
+
+        accelerator.wait_for_everyone()
 
         if clear_cache:
             test_data.cleanup_cache_files()
