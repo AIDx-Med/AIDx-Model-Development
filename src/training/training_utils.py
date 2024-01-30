@@ -194,6 +194,12 @@ def load_data(parquet_dir, stream=True, val_size=0.1, cpu_count=1, test_only=Fal
             train_dataset = init_train_dataset.map(transform_dataset_from_pickle, batched=True, batch_size=1_000,
                                                    num_proc=cpu_count)
 
+            # remove any samples with more than 16k tokens
+            train_dataset.filter(
+                lambda batch: [len(input_id) <= 16_000 for input_id in batch['input_ids']],
+                batched=True, batch_size=1_000, num_proc=64
+            )
+
         accelerator.wait_for_everyone()
 
         if clear_cache:
