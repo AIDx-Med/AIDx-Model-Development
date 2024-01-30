@@ -73,7 +73,7 @@ def load_model_trainer(
             + "-"
             + datetime.now().strftime("%Y-%m-%d-%H-%M")
     )
-    output_dir = "./" + run_name
+    output_dir = "./training/" + run_name
 
     batch_size = max_batch_size
     gradient_accumulation_steps = 2
@@ -102,7 +102,7 @@ def load_model_trainer(
         gradient_checkpointing_kwargs={
             'use_reentrant': False
         },
-        deepspeed="/workspace/zero3.json"
+        deepspeed="/workspace/zero2.json"
     )
 
     bnb_config = BitsAndBytesConfig(
