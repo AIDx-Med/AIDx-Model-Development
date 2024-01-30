@@ -1,6 +1,13 @@
 import os
 import torch
 import transformers
+import sys
+
+current_file_directory = os.path.dirname(__file__)
+src_dir = os.path.dirname(os.path.dirname(current_file_directory))
+absolute_src_path = os.path.abspath(src_dir)
+
+sys.path.append(absolute_src_path)
 
 from src.training.training_utils import (
     print_summary,
