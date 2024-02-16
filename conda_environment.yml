@@ -47,3 +47,5 @@ dependencies:
       - pynvml
       - wandb
       - flash-attn
+      - auto-gptq
+      - optimum

@@ -3,6 +3,8 @@ import torch
 import transformers
 import sys
 
+from transformers import AutoTokenizer
+
 current_file_directory = os.path.dirname(__file__)
 src_dir = os.path.dirname(os.path.dirname(current_file_directory))
 absolute_src_path = os.path.abspath(src_dir)
@@ -79,21 +81,18 @@ def main(args=None):
     print_gpu_utilization(accelerator)
 
     accelerator.print("Training model...")
-    train_result = trainer.train()
-
-    trainer._load_best_model()
+    trainer.train()
 
     # save the best model adapter as safetensors
     trainer.save_model("aidx-mixtral")
+    tokenizer = AutoTokenizer.from_pretrained('mistralai/Mixtral-8x7B-Instruct-v0.1')
+    tokenizer.chat_template = "{% if not add_generation_prompt is defined %}{% set add_generation_prompt = false %}{% endif %}{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"  # restore padding side
+    tokenizer.init_kwargs["padding_side"] = "left"
+    tokenizer.save_pretrained('aidx-mixtral')
 
     accelerator.print("Done training model...")
-
-    accelerator.print("Evaluating model...")
-    test_data = load_data(parquet_dir, stream=True, cpu_count=cpu_count//gpu_count, test_only=True, accelerator=accelerator, clear_cache=clear_cache)
-
-    eval_and_save_metrics(test_data, train_result, trainer)
-
-    print_summary(train_result, accelerator)
 
 if __name__ == "__main__":
     main()

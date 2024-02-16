@@ -44,7 +44,7 @@ fi
 # anaconda
 
 # install
-apt-get install -y libgl1-mesa-glx libegl1-mesa libxrandr2 libxrandr2 libxss1 libxcursor1 libxcomposite1 libasound2 libxi6 libxtst6 nvidia-cuda-toolkit libaio-dev
+apt-get install -y libgl1-mesa-glx libegl1-mesa libxrandr2 libxrandr2 libxss1 libxcursor1 libxcomposite1 libasound2 libxi6 libxtst6 libaio-dev
 
 # curl miniforge to ./miniforge.sh
 curl -L "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" -o "$PROJECT_DIR"/miniforge.sh
